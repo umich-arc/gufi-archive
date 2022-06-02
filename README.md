@@ -26,5 +26,10 @@ singularity run-help gufi.sif
 singularity exec gufi.sif <exe>
 ```
 
-
 ## Reporting Scripts
+
+```
+# build an index
+gufi_dir2index -n <#threads> <inputdir> <output>
+
+```
