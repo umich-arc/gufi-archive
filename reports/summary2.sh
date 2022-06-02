@@ -29,8 +29,9 @@ $BFQ -E " \
 	-I "CREATE TABLE sument (username text, name text, size int64, atime int64, oldsize int64);" $1
 
 $QUERYDBS -NV outdb sument " \
+	select username,count, sizeGB, oldsize, (100*oldsize/sizeGB) as percent from( \
 	SELECT uidtouser(username, 0) AS username, COUNT(*) AS count, sum(size)/1024/1024/1024 AS sizeGB, sum(oldsize)/1024/1024/1024 as oldsize from vsument \
-	GROUP BY uidtouser(username, 0) \
+	GROUP BY uidtouser(username, 0)) \
 	ORDER BY sizeGB DESC;" \
 	outdb.* | column -s '|' -t
 
