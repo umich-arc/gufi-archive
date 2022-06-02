@@ -3,12 +3,6 @@ THREADS=4
 BFQ="singularity exec gufi_master.sif gufi_query"
 QUERYDBS="singularity exec --bind /etc/passwd gufi_master.sif querydbs"
 DAYS=${2:-180}
-# check if not using singularity
-a=`whereis singularity`
-if [ -n "$a" ]; then
-  BFQ=gufi_query
-  QUERYDBS=querydbs
-fi
 
 if [ $# -lt 1 ]; then echo "Usage: $(basename $0) index [days]"; exit 1; fi 
 
@@ -33,6 +27,15 @@ $QUERYDBS -NV outdb sument " \
 	SELECT uidtouser(username, 0) AS username, COUNT(*) AS count, sum(size)/1024/1024/1024 AS sizeGB, sum(oldsize)/1024/1024/1024 as oldsize from vsument \
 	GROUP BY uidtouser(username, 0)) \
 	ORDER BY sizeGB DESC;" \
+	outdb.* | column -s '|' -t
+
+
+
+echo ""
+echo "----------------- Path Totals -----------------"
+$QUERYDBS -NV outdb sument " \
+	select count, sizeGB, oldsize, (100*oldsize/sizeGB) as percent from( \
+		SELECT uidtouser(username, 0) AS username, COUNT(*) AS count, sum(size)/1024/1024/1024 AS sizeGB, sum(oldsize)/1024/1024/1024 as oldsize from vsument);" \
 	outdb.* | column -s '|' -t
 
 # cleanup 

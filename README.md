@@ -19,15 +19,15 @@ singularity push -U  gufi.sif library://brockp/gufi/gufi:[tag]
 # running
 module load singularity
 singularity pull --arch amd64 library://brockp/gufi/gufi:master
-singularity run-help gufi.sif
-singularity exec gufi.sif <exe>
+singularity run-help gufi_master.sif
+singularity exec gufi_master.sif cmd
 ```
 
 ## Reporting Scripts
 
 ```
 # build an index this is time consuming but is reused for many queries
-gufi_dir2index -n <#threads> <inputdir> <output>
+singularity exect gufi_master.sif gufi_dir2index -n <#threads> <inputdir> <output>
 
 ```
 
