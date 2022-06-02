@@ -21,6 +21,7 @@ singularity push -U  gufi.sif library://brockp/gufi/gufi:[tag]
 ```
 # running
 module load singularity
+singularity pull --arch amd64 library://brockp/gufi/gufi:master
 singularity run-help gufi.sif
 singularity exec gufi.sif <exe>
 ```
