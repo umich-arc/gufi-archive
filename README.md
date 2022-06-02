@@ -9,5 +9,21 @@ about the archiveability of data in massive volumes.
 
 ## Singularity
 
+Building the container on [sylabs](https://cloud.sylabs.io/tokens)
+
+```
+singularity remote login
+singularity build --remote gufi.sif singularity.def 
+singularity push -U  gufi.sif library://brockp/gufi/gufi:master
+singularity push -U  gufi.sif library://brockp/gufi/gufi:[tag]
+```
+
+```
+# running
+module load singularity
+singularity run-help gufi.sif
+singularity exec gufi.sif <exe>
+```
+
 
 ## Reporting Scripts

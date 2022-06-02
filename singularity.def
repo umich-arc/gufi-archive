@@ -1,0 +1,32 @@
+BootStrap: library
+From: ubuntu:20.04
+
+%post
+    apt-get -y update
+    apt-get -y install software-properties-common
+    add-apt-repository universe
+    apt-get -y update
+    apt-get -y install cmake git wget gcc g++ pkg-config libpcre3-dev libpcre3 autoconf
+    git clone https://github.com/mar-file-system/GUFI.git
+    cd GUFI
+    rm contrib/deps/googletest.tar.gz 
+    mkdir build
+    cd build
+    cmake ..
+    make
+    make install
+
+%environment
+    export PATH=/archivetar/dist:/archivetar/install/bin:${PATH}
+
+%runscript
+    echo "Run as:"
+    echo "singularity exec singuarity.sif"
+
+%labels
+    Author brockp@umich.edu
+    URL https://github.com/umich-arc/gufi-archive
+
+
+%help
+    Reporitng on filesystem state for purposes of archiving or removing unneeded data from primary storage
