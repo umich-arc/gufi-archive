@@ -1,7 +1,19 @@
 #!/bin/bash
 THREADS=4
-BFQ="singularity exec gufi_master.sif gufi_query"
-QUERYDBS="singularity exec --bind /etc/passwd gufi_master.sif querydbs"
+
+# are we in a normal install or outside of singularity?
+if hash gufi_query 2> /dev/null; then
+	BFQ=gufi_query
+else
+	BFQ="singularity exec gufi_master.sif gufi_query"
+fi
+
+if hash querydbs 2> /dev/null; then
+	QUERYDBS=querydbs
+else
+	QUERYDBS="singularity exec --bind /etc/passwd gufi_master.sif querydbs"
+fi
+
 DAYS=${2:-180}
 
 if [ $# -lt 1 ]; then echo "Usage: $(basename $0) index [days]"; exit 1; fi 
