@@ -15,16 +15,27 @@ echo "Reporting on data older than $DAYS days last accessed"
 echo ""
 
 $BFQ -E " \
-	INSERT INTO sument select uid, name, size, atime FROM entries \
-	WHERE type='f' \
-       	AND datetime(atime, 'unixepoch') < DATE('now', '-"$DAYS" day');" \
+	INSERT INTO sument select uid, name, size, atime, \
+	case when datetime(atime, 'unixepoch') < DATE('now', '-"$DAYS" day') then size else 0 end as oldsize \
+	FROM entries \
+	WHERE type='f';" \
 	-n $THREADS -O outdb \
-	-I "CREATE TABLE sument (username text, name text, size int64, atime int64);" $1
+	-I "CREATE TABLE sument (username text, name text, size int64, atime int64, oldsize int64);" $1
 
 $QUERYDBS -NV outdb sument " \
-	SELECT uidtouser(username, 0) AS username, COUNT(*) AS count, sum(size)/1024/1024/1024 AS sizeGB from vsument \
-	GROUP BY uidtouser(username, 0) \
+	select username,count, sizeGB, oldsize, (100*oldsize/sizeGB) as percent from( \
+	SELECT uidtouser(username, 0) AS username, COUNT(*) AS count, sum(size)/1024/1024/1024 AS sizeGB, sum(oldsize)/1024/1024/1024 as oldsize from vsument \
+	GROUP BY uidtouser(username, 0)) \
 	ORDER BY sizeGB DESC;" \
+	outdb.* | column -s '|' -t
+
+
+
+echo ""
+echo "----------------- Path Totals -----------------"
+$QUERYDBS -NV outdb sument " \
+	select count, sizeGB, oldsize, (100*oldsize/sizeGB) as percent from( \
+		SELECT uidtouser(username, 0) AS username, COUNT(*) AS count, sum(size)/1024/1024/1024 AS sizeGB, sum(oldsize)/1024/1024/1024 as oldsize from vsument);" \
 	outdb.* | column -s '|' -t
 
 # cleanup 

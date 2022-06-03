@@ -15,16 +15,20 @@ From: ubuntu:20.04
     cmake ..
     make
     make install
+    cp /etc/GUFI/config.example /etc/GUFI/config
+    sed -i -e 's/IndexRoot/#IndexRoot/' /etc/GUFI/config
+    echo "IndexRoot=/tmp/GUFI" >> /etc/GUFI/config
+    git clone https://github.com/umich-arc/gufi-archive.git
 
 %environment
-    export PATH=/archivetar/dist:/archivetar/install/bin:${PATH}
+    export PATH=gufi-archive/reports:${PATH}
 
 %runscript
     echo "Run as:"
     echo "singularity exec singuarity.sif"
 
 %labels
-    Author brockp@umich.edu
+    Author brockp@umich.edu 2022 Hacks with Friends Group
     URL https://github.com/umich-arc/gufi-archive
 
 
