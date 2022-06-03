@@ -1,5 +1,5 @@
 #!/bin/bash
-THREADS=4
+THREADS=8
 
 # are we in a normal install or outside of singularity?
 if hash gufi_query 2> /dev/null; then
