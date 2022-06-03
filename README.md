@@ -36,6 +36,13 @@ singularity exec --bind /etc/passwd gufi_master.sif summary.sh /tmp/GUFI [days]
 singularity exec --bind /etc/passwd gufi_master.sif gufi_ls --help
 ```
 
+### Scripts
+
+ * `summary.sh /tmp/GUFI [days]` provides a summary of total and data not
+   accessed in 180 days
+ * `dirsum.sh /tmp/GUFI/dir [days]` Show totals in each directory below the
+   given directory and files not accessed in 180 days
+
 ### Resolving groups and users
 
 The continer doesn't know about UID's and groups other than the user invoking
