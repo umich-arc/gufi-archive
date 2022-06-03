@@ -16,7 +16,9 @@ From: ubuntu:20.04
     make install
     cp /etc/GUFI/config.example /etc/GUFI/config
     sed -i -e 's/IndexRoot/#IndexRoot/' /etc/GUFI/config
+    sed -i -e 's/Threads/#Threads/' /etc/GUFI/config
     echo "IndexRoot=/tmp/GUFI" >> /etc/GUFI/config
+    echo "Threads=8" >> /etc/GUFI/config
     cd /
     git clone https://github.com/umich-arc/gufi-archive.git
 
