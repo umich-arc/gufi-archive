@@ -42,6 +42,7 @@ singularity exec --bind /etc/passwd gufi_master.sif gufi_ls --help
    accessed in 180 days
  * `dirsum.sh /tmp/GUFI/dir [days]` Show totals in each directory below the
    given directory and files not accessed in 180 days
+ * `totals.sh /tmp/GUFI/dir [days]` Summary similar to `du -s`
 
 ### Resolving groups and users
 
