@@ -27,8 +27,13 @@ singularity exec gufi_master.sif cmd
 
 ```
 # build an index this is time consuming but is reused for many queries
-singularity exect gufi_master.sif gufi_dir2index -n <#threads> <inputdir> <output>
+singularity exec gufi_master.sif gufi_dir2index -n <#threads> <inputdir> /tmp/GUFI
 
+# run a summary report of how much not been accessed in X days
+singularity exec gufi_master.sif summary.sh /tmp/GUFI [days]
+
+# use GUFI ls to just list files
+singularity exect gufi_master.sif gufi_ls --help
 ```
 
 ## Building GUFI
