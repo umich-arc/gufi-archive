@@ -6,7 +6,7 @@ From: ubuntu:20.04
     apt-get -y install software-properties-common
     add-apt-repository universe
     apt-get -y update
-    apt-get -y install cmake git wget gcc g++ pkg-config libpcre3-dev libpcre3 autoconf
+    apt-get -y install cmake git wget gcc g++ pkg-config libpcre3-dev libpcre3 autoconf bsdmainutils
     git clone https://github.com/mar-file-system/GUFI.git
     cd GUFI
     rm contrib/deps/googletest.tar.gz 
@@ -18,10 +18,11 @@ From: ubuntu:20.04
     cp /etc/GUFI/config.example /etc/GUFI/config
     sed -i -e 's/IndexRoot/#IndexRoot/' /etc/GUFI/config
     echo "IndexRoot=/tmp/GUFI" >> /etc/GUFI/config
+    cd /
     git clone https://github.com/umich-arc/gufi-archive.git
 
 %environment
-    export PATH=gufi-archive/reports:${PATH}
+    export PATH=/gufi-archive/reports:${PATH}
 
 %runscript
     echo "Run as:"

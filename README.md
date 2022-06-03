@@ -30,11 +30,17 @@ singularity exec gufi_master.sif cmd
 singularity exec gufi_master.sif gufi_dir2index -n <#threads> <inputdir> /tmp/GUFI
 
 # run a summary report of how much not been accessed in X days
-singularity exec gufi_master.sif summary.sh /tmp/GUFI [days]
+singularity exec --bind /etc/passwd gufi_master.sif summary.sh /tmp/GUFI [days]
 
 # use GUFI ls to just list files
-singularity exect gufi_master.sif gufi_ls --help
+singularity exec --bind /etc/passwd gufi_master.sif gufi_ls --help
 ```
+
+### Resolving groups and users
+
+The continer doesn't know about UID's and groups other than the user invoking
+it. To correctly resolve the UID and GID's stored in the GUFI index you need to
+bind the local system to the container runtime with `--bind /etc/passwd`
 
 ## Building GUFI
 
