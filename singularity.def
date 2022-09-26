@@ -1,12 +1,12 @@
 BootStrap: library
-From: ubuntu:20.04
+From: ubuntu:22.04
 
 %post
     apt-get -y update
     apt-get -y install software-properties-common
     add-apt-repository universe
     apt-get -y update
-    apt-get -y install cmake git wget gcc g++ pkg-config libpcre3-dev libpcre3 autoconf bsdmainutils
+    apt-get -y install cmake git wget gcc g++ pkg-config libpcre3-dev libpcre3 autoconf bsdmainutils attr
     git clone https://github.com/mar-file-system/GUFI.git
     cd GUFI
     mkdir build
