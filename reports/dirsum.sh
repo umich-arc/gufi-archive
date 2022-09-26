@@ -39,7 +39,7 @@ $BFQ -E " \
 	-n $THREADS -O outdb \
 	-I "CREATE TABLE sument (username text, name text, size int64, atime int64, oldsize int64);" $1/$dir
 
-a=`$QUERYDBS -V $gettitle outdb sument " \
+a=`$QUERYDBS -d \| -V $gettitle outdb sument " \
 	select count, sizeGB, oldsize, (100*oldsize/sizeGB) as percent from( \
 	SELECT COUNT(*) AS count, sum(size)/1024/1024/1024 AS sizeGB, sum(oldsize)/1024/1024/1024 as oldsize from vsument) \
 	ORDER BY sizeGB DESC;" \
