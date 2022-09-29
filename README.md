@@ -38,11 +38,14 @@ singularity exec --bind /etc/passwd gufi_master.sif gufi_ls --help
 
 ### Scripts
 
+[SCRIPTS.md](SCRIPTS.md)
+
  * `summary.sh /tmp/GUFI [days]` provides a summary of total and data not
    accessed in 180 days
  * `dirsum.sh /tmp/GUFI/dir [days]` Show totals in each directory below the
    given directory and files not accessed in 180 days
  * `totals.sh /tmp/GUFI/dir [days]` Summary similar to `du -s`
+ * `archivescan.sh /tmp/GUFI/dir [sizeMB]` Bucket data into over size and under.
 
 ### Resolving groups and users
 
