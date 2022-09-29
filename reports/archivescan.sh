@@ -44,9 +44,9 @@ echo ""
 $QUERYDBS -d \| -NV outdb sument " \
 	SELECT count, sizeGB, cacheCnt, cachesizeGB, tapeCnt, tapesizeGB, (100*tapesizeGB/sizeGB) as archiveGBratio, (100*tapeCnt/count) as archiveCntRatio from( \
 		SELECT 
-		COUNT(CASE WHEN (size * 1024 * 1024) < $MIGRATESIZE THEN 1 ELSE NULL END) as cacheCnt, \
-		COUNT(CASE WHEN (size * 1024 * 1024) >= $MIGRATESIZE THEN 1 ELSE NULL END) as tapeCnt, \
-		SUM(CASE WHEN oversize != 0 THEN size ELSE 0 END)/1024/1024/1024 as cachesizeGB, \
+		COUNT(CASE WHEN (size / 1024 / 1024) < $MIGRATESIZE THEN 1 ELSE NULL END) as cacheCnt, \
+		COUNT(CASE WHEN (size / 1024 / 1024) >= $MIGRATESIZE THEN 1 ELSE NULL END) as tapeCnt, \
+		SUM(CASE WHEN oversize != 0 THEN 0 ELSE size END)/1024/1024/1024 as cachesizeGB, \
 		COUNT(*) AS count, sum(size)/1024/1024/1024 AS sizeGB, sum(oversize)/1024/1024/1024 as tapesizeGB from vsument);" \
 	outdb.* | column -s '|' -t
 
