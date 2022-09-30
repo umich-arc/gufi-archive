@@ -31,7 +31,7 @@ echo ""
 
 $BFQ -E " \
 	INSERT INTO sument select uid, name, size, atime, \
-	case when size > $MIGRATESIZE * 1024 * 1024 then size else 0 end as oversize \
+	CASE WHEN size > $MIGRATESIZE * 1024 * 1024 THEN size ELSE 0 END AS oversize \
 	FROM entries \
 	WHERE type='f';" \
 	-n $THREADS -O outdb \
@@ -42,12 +42,16 @@ echo "Total Data, Data in files larger than $MIGRATESIZE MB, Archive Offline Rat
 echo ""
 
 $QUERYDBS -d \| -NV outdb sument " \
-	SELECT count, sizeGB, cacheCnt, cachesizeGB, tapeCnt, tapesizeGB, (100*tapesizeGB/sizeGB) as archiveGBratio, (100*tapeCnt/count) as archiveCntRatio from( \
+	SELECT count, sizeGB, cacheCnt, cachesizeGB, tapeCnt, tapesizeGB, \
+	PRINTF('%02d%%', (100*tapesizeGB/sizeGB)) AS archiveGBratio, \
+	PRINTF('%02d%%', (100*tapeCnt/count)) AS archiveCntRatio \
+	FROM( \
 		SELECT 
-		COUNT(CASE WHEN (size / 1024 / 1024) < $MIGRATESIZE THEN 1 ELSE NULL END) as cacheCnt, \
-		COUNT(CASE WHEN (size / 1024 / 1024) >= $MIGRATESIZE THEN 1 ELSE NULL END) as tapeCnt, \
-		SUM(CASE WHEN oversize != 0 THEN 0 ELSE size END)/1024/1024/1024 as cachesizeGB, \
-		COUNT(*) AS count, sum(size)/1024/1024/1024 AS sizeGB, sum(oversize)/1024/1024/1024 as tapesizeGB from vsument);" \
+		COUNT(CASE WHEN (size / 1024 / 1024) < $MIGRATESIZE THEN 1 ELSE NULL END) AS cacheCnt, \
+		COUNT(CASE WHEN (size / 1024 / 1024) >= $MIGRATESIZE THEN 1 ELSE NULL END) AS tapeCnt, \
+		SUM(CASE WHEN oversize != 0 THEN 0 ELSE size END)/1024/1024/1024 AS cachesizeGB, \
+		COUNT(*) AS count, sum(size)/1024/1024/1024 AS sizeGB, \
+		SUM(oversize)/1024/1024/1024 AS tapesizeGB from vsument);" \
 	outdb.* | column -s '|' -t
 
 # cleanup 
