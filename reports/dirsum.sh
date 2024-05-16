@@ -28,16 +28,16 @@ echo ""
 
 gettitle="-N"
 
-for dir in `find $1 -maxdepth 1 -mindepth 1 -type d -printf '%f\n'`
-do
+find "$1" -maxdepth 1 -mindepth 1 -type d -print0 | while IFS= read -r -d '' dir; do
 {
+folder=$(basename "$dir")
 $BFQ -E " \
 	INSERT INTO sument select uid, name, size, atime, \
 	case when datetime(atime, 'unixepoch') < DATE('now', '-"$DAYS" day') then size else 0 end as oldsize \
 	FROM entries \
 	WHERE type='f';" \
 	-n $THREADS -O outdb \
-	-I "CREATE TABLE sument (username text, name text, size int64, atime int64, oldsize int64);" $1/$dir
+	-I "CREATE TABLE sument (username text, name text, size int64, atime int64, oldsize int64);" "$dir"
 
 a=`$QUERYDBS -d \| -V $gettitle outdb sument " \
 	select count, sizeGB, oldsize, \
@@ -49,9 +49,9 @@ a=`$QUERYDBS -d \| -V $gettitle outdb sument " \
 gettitle=""
 b=`echo "$a" | awk '/^query returned/ {print $3}'`
 if [ "$b" = 0 ]; then
-  echo "$dir|0|0|0|(null)|"
+  echo "$folder|0|0|0|(null)|"
 else
-  echo "$a" | awk '/^query returned/ {next} /^count/ {print "directory|"$0;next} {print "'$dir'|"$0}'
+  echo "$a" | awk -v folder="$folder" '/^query returned/ {next} /^count/ {print "directory|"$0;next} {print folder"|"$0}'
 fi
 
 # cleanup 

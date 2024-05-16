@@ -35,7 +35,7 @@ $BFQ -E " \
 	FROM entries \
 	WHERE type='f';" \
 	-n $THREADS -O outdb \
-	-I "CREATE TABLE sument (username text, name text, size int64, atime int64, oldsize int64);" $1
+	-I "CREATE TABLE sument (username text, name text, size int64, atime int64, oldsize int64);" "$1"
 
 $QUERYDBS -d \| -NV outdb sument " \
 	select count, sizeGB, oldsize, \

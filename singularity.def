@@ -9,6 +9,7 @@ From: ubuntu:22.04
     apt-get -y install cmake git wget gcc g++ pkg-config libpcre3-dev libpcre3 autoconf bsdmainutils attr
     git clone https://github.com/mar-file-system/GUFI.git
     cd GUFI
+    git checkout -b build  226b604f4687ac055bde16f0d59742ad472fdb44  # to get older CLI options used in the reports
     mkdir build
     cd build
     cmake ..
