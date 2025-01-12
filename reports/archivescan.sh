@@ -22,7 +22,7 @@ MIGRATESIZE=${2:-100}
 if [ $# -lt 1 ]; then echo "Usage: $(basename $0) index [days]"; exit 1; fi 
 
 # cleanup 
-trap 'rm -f outdb.*' EXIT
+trap 'rm -f outdb$$.*' EXIT
 
 echo ""
 echo "Using GUFI Index located in: $1"
@@ -34,14 +34,14 @@ $BFQ -E " \
 	CASE WHEN size > $MIGRATESIZE * 1024 * 1024 THEN size ELSE 0 END AS oversize \
 	FROM entries \
 	WHERE type='f';" \
-	-n $THREADS -O outdb \
+	-n $THREADS -O outdb$$ \
 	-I "CREATE TABLE sument (username text, name text, size int64, atime int64, oversize int64);" "$1"
 
 echo ""
 echo "Total Data, Data in files larger than $MIGRATESIZE MB, Archive Offline Ratio"
 echo ""
 
-$QUERYDBS -d \| -NV outdb sument " \
+$QUERYDBS -d \| -NV outdb$$ sument " \
 	SELECT count, sizeGB, cacheCnt, cachesizeGB, tapeCnt, tapesizeGB, \
 	PRINTF('%02d%%', (100*tapesizeGB/sizeGB)) AS archiveGBratio, \
 	PRINTF('%02d%%', (100*tapeCnt/count)) AS archiveCntRatio \
@@ -52,7 +52,7 @@ $QUERYDBS -d \| -NV outdb sument " \
 		SUM(CASE WHEN oversize != 0 THEN 0 ELSE size END)/1024/1024/1024 AS cachesizeGB, \
 		COUNT(*) AS count, sum(size)/1024/1024/1024 AS sizeGB, \
 		SUM(oversize)/1024/1024/1024 AS tapesizeGB from vsument);" \
-	outdb.* | column -s '|' -t
+	outdb$$.* | column -s '|' -t
 
 # cleanup 
-rm -f outdb.*
+rm -f outdb$$.*

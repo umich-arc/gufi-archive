@@ -22,7 +22,7 @@ DAYS=${2:-180}
 if [ $# -lt 1 ]; then echo "Usage: $(basename $0) index [days]"; exit 1; fi 
 
 # cleanup 
-trap 'rm -f outdb.*' EXIT
+trap 'rm -f outdb$$.*' EXIT
 
 echo ""
 echo "Using GUFI Index located in: $1"
@@ -34,15 +34,15 @@ $BFQ -E " \
 	case when datetime(atime, 'unixepoch') < DATE('now', '-"$DAYS" day') then size else 0 end as oldsize \
 	FROM entries \
 	WHERE type='f';" \
-	-n $THREADS -O outdb \
+	-n $THREADS -O outdb$$ \
 	-I "CREATE TABLE sument (username text, name text, size int64, atime int64, oldsize int64);" "$1"
 
-$QUERYDBS -d \| -NV outdb sument " \
+$QUERYDBS -d \| -NV outdb$$ sument " \
 	select count, sizeGB, oldsize, \
 		PRINTF('%02d%%', (100*oldsize/sizeGB)) AS percent \
 		FROM( \
 		SELECT uidtouser(username, 0) AS username, COUNT(*) AS count, sum(size)/1024/1024/1024 AS sizeGB, sum(oldsize)/1024/1024/1024 as oldsize from vsument);" \
-	outdb.* | column -s '|' -t
+	outdb$$.* | column -s '|' -t
 
 # cleanup 
-rm -f outdb.*
+rm -f outdb$$.*
