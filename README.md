@@ -32,6 +32,9 @@ singularity exec gufi_master.sif gufi_dir2index -n <#threads> <inputdir> /tmp/GU
 # run a summary report of how much not been accessed in X days
 singularity exec --bind /etc/passwd gufi_master.sif summary.sh /tmp/GUFI [days]
 
+# find users holding data past the purge window by resetting timestamps
+singularity exec --bind /etc/passwd gufi_master.sif purgeevade.sh /tmp/GUFI 60
+
 # use GUFI ls to just list files
 singularity exec --bind /etc/passwd gufi_master.sif gufi_ls --help
 ```
@@ -46,6 +49,12 @@ singularity exec --bind /etc/passwd gufi_master.sif gufi_ls --help
    given directory and files not accessed in 180 days
  * `totals.sh /tmp/GUFI/dir [days]` Summary similar to `du -s`
  * `archivescan.sh /tmp/GUFI/dir [sizeMB]` Bucket data into over size and under.
+ * `mdhist.sh /tmp/GUFI/dir [binwidth] [maxage] [user]` Histogram atime, mtime
+   and ctime age into fixed width bins. Wide bins size a purge, narrow bins find
+   a mass `touch`.
+ * `purgeevade.sh /tmp/GUFI/dir [days] [minfiles] [user]` Rank users by how much
+   of their data survives the purge window only because its timestamps were
+   reset.
 
 ### Resolving groups and users
 
