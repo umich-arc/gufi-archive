@@ -107,16 +107,6 @@ $BFQ -E " \
 	-n $THREADS -O outdb$$ \
 	-I "CREATE TABLE mdhist (ts text, uid int64, bin int64, cnt int64, bytes int64);" "$1"
 
-# an empty result means the path held no regular files, or is not an index
-FOUND=$($QUERYDBS -d \| -NV outdb$$ mdhist "SELECT COUNT(*) FROM vmdhist;" \
-	outdb$$.* 2> /dev/null | grep -E '^[0-9]+\|?$' | tr -d '|' | head -1)
-ls outdb$$.* > /dev/null 2>&1 || FOUND=0
-if [ "$FOUND" = "0" ]; then
-	echo "No regular files found under $1"
-	echo "Check that it is a GUFI index directory and not a symlink in the source tree."
-	exit 0
-fi
-
 # pivot the three timestamps back into one row per bin
 $QUERYDBS -d \| -NV outdb$$ mdhist " \
 	SELECT \

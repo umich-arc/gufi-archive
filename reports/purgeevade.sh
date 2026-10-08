@@ -113,16 +113,6 @@ $BFQ -E " \
 		coCnt int64, coBytes int64, mtCnt int64, mtBytes int64, \
 		futCnt int64, amEq int64);" "$1"
 
-# an empty result means the path held no regular files, or is not an index
-FOUND=$($QUERYDBS -d \| -NV outdb$$ evade "SELECT COUNT(*) FROM vevade;" \
-	outdb$$.* 2> /dev/null | grep -E '^[0-9]+\|?$' | tr -d '|' | head -1)
-ls outdb$$.* > /dev/null 2>&1 || FOUND=0
-if [ "$FOUND" = "0" ]; then
-	echo "No regular files found under $1"
-	echo "Check that it is a GUFI index directory and not a symlink in the source tree."
-	exit 0
-fi
-
 # the inner group collapses the per directory rows so MAX() sees whole hours
 $QUERYDBS -d \| -NV outdb$$ evade " \
 	SELECT username, files, sizeGB, survGB, touchGB, coGB, mtGB, \
