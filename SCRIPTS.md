@@ -123,20 +123,22 @@ Rank users by how much of their surviving data has had its timestamps reset to
 sit out the purge. `days` is the purge window and defaults to 60, `minfiles`
 suppresses users with fewer files than that and defaults to 1000.
 
-Our purge takes anything not accessed in `days` days and reads both `atime` and
-`ctime`, so a file survives when `MAX(atime, ctime)` falls inside the window.
+[purgetools](https://github.com/brockpalen/purgetools) removes a file only when
+`atime`, `mtime` and `ctime` are all older than `days`, so a file survives when
+`MAX(atime, mtime, ctime)` falls inside the window. It re-checks every file at
+purge time, so anything a user refreshes during the notice period is spared.
 `atime` and `mtime` are settable to any value through `utimensat`, which is what
 `touch` uses, but no syscall writes `ctime`: the kernel stamps it on every inode
 change. Every column below rests on that.
 
 | column | meaning |
 | --- | --- |
-| `touchGB` | `mtime` is stale, yet `atime` and `ctime` moved together. Reading a file moves `atime` alone and leaves `ctime` back near `mtime`, so both moving as one means the inode was written, not read. `touch` and `touch -a` land here. |
+| `touchGB` | `mtime` is stale, yet `atime` and `ctime` moved together. Reading a file moves `atime` alone and leaves `ctime` back near `mtime`, so both moving as one means the inode was written, not read. `touch -a` lands here. |
 | `coGB` | `atime` and `mtime` are both outside the window and only `ctime` is inside it, so the file survives purely on the `ctime` half of the policy. `touch -a -t <old date>` does this on purpose and a recursive `chmod` or `chown` does it by accident. |
-| `mtGB` | `mtime` and `ctime` moved together while `atime` stayed outside the window, which is `touch` or `touch -m` on a file nobody has read in months. |
+| `mtGB` | `mtime` and `ctime` moved together while `atime` stayed outside the window, which is `touch -m` on a file nobody has read in months. |
 | `suspPct` | share of the user's surviving **bytes** that the three tests above claim. |
 | `futCnt` | files with `atime` or `mtime` parked in the future, which never ages out. |
-| `hotHr` | most files any one of the user's `ctime` hours holds, whatever the class. Scattering `atime` with `touch -a -d` hides a sweep from the tests above, but every inode still took its `ctime` the hour the sweep ran. |
+| `hotHr` | most files any one of the user's `ctime` hours holds, whatever the class. Plain `touch` sets all three timestamps to now, which a single snapshot cannot tell from a fresh write, and `touch -a -d` can scatter `atime` to dodge the tests above, but every inode still took its `ctime` the hour the sweep ran. |
 | `peakHrPct` | share of the user's suspect files sitting in that one hour. |
 
 ```
@@ -167,8 +169,9 @@ alive. `cflint` parked 900 files a year into the future.
 
 `dgarza` is the control. That hour holds more files than any sweep in the list
 but `suspPct` is 0%, because it was a job writing 29k outputs: `atime`, `mtime`
-and `ctime` all moved together, which is what real work looks like. Always read
-`suspPct` beside the file count.
+and `ctime` all moved together, which is what real work looks like. Plain
+`touch` looks exactly the same, so a burst at 0% is only innocent if the user
+really ran a job then. Always read `suspPct` beside the file count.
 
 ## Reading the totals
 

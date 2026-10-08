@@ -2,26 +2,30 @@
 
 # find users who reset timestamps to keep files past the purge window
 #
-# Our purge takes anything not accessed in 60 days and looks at both atime and
-# ctime, so a file survives when MAX(atime, ctime) is inside the window.  atime
+# purgetools removes a file only when atime, mtime and ctime are all older than
+# 60 days, so a file survives when MAX(atime, mtime, ctime) is inside the window.
+# It re-checks each file at purge time, so anything a user refreshes during the
+# notice period is spared.  atime
 # and mtime can be set to any value with utimensat, so 'touch' rewrites them
 # freely, but there is no syscall that writes ctime: the kernel stamps it on
 # every inode change.  That leaves four things a mass touch cannot hide.
 #
 #   touchGB   mtime is stale, yet atime and ctime moved together.  Reading a file
 #             moves atime alone and leaves ctime back near mtime, so the two
-#             moving as one means the inode was written, not read.  Plain 'touch'
-#             and 'touch -a' both land here.
+#             moving as one means the inode was written, not read.  'touch -a'
+#             lands here.
 #   coGB      atime and mtime are both outside the window and only ctime is
 #             inside it, so these files survive purely on the ctime half of the
 #             policy.  'touch -a -t <old date>' does this deliberately, and a
 #             recursive chmod or chown does it by accident.
 #   mtGB      mtime and ctime moved together while atime stayed outside the
-#             window, which is what 'touch' and 'touch -m' leave behind on a file
-#             nobody has read in months.
-#   hotHr     most files any one of the user's ctime hours holds.  Scattering
-#             atime with 'touch -a -d' hides a sweep from the tests above, but
-#             every inode still took its ctime the hour the sweep ran.
+#             window, which is what 'touch -m' leaves behind on a file nobody has
+#             read in months.
+#   hotHr     most files any one of the user's ctime hours holds.  Plain 'touch'
+#             sets all three timestamps to now, which one snapshot cannot tell
+#             from a fresh write, and 'touch -a -d' can scatter atime to dodge the
+#             tests above, but every inode still took its ctime the hour the
+#             sweep ran.
 #
 # Two things also produce stale mtime beside a fresh atime and ctime: a restore
 # or copy that preserved timestamps (cp -p, rsync -a, tar -xp), and an append
@@ -75,7 +79,7 @@ if [ -n "$4" ]; then
 fi
 
 # the four tests, kept here so the table and the evidence list cannot disagree
-SURVIVES="atime >= $CUT OR ctime >= $CUT"
+SURVIVES="atime >= $CUT OR mtime >= $CUT OR ctime >= $CUT"
 TOUCHED="mtime < $CUT AND ctime >= $CUT AND ABS(atime - ctime) <= $SLOP"
 CTIMEONLY="mtime < $CUT AND atime < $CUT AND ctime >= $CUT"
 MTSWEEP="mtime >= $CUT AND atime < $CUT AND ABS(mtime - ctime) <= $SLOP"
@@ -85,7 +89,7 @@ trap 'rm -f outdb$$.*' EXIT
 
 echo ""
 echo "Using GUFI Index located in: $1"
-echo "Purge window is $DAYS days on MAX(atime, ctime), reporting $WHO"
+echo "Purge window is $DAYS days on MAX(atime, mtime, ctime), reporting $WHO"
 echo ""
 
 # bucket by ctime during the scan so the burst tests have their bins already
