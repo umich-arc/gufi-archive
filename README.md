@@ -68,7 +68,7 @@ GUFI as of June 2022 cannot build from
 [googletest](https://github.com/mar-file-system/GUFI/issues/90)
 
 The reports use the older CLI options of the commit pinned in
-`singularity.def`, which needs an older cmake (see [TODO.md](TODO.md)).
+`singularity.def`, which needs an older cmake.
 
 ```
 module load cmake/3.22.2
