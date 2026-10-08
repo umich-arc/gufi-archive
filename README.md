@@ -64,8 +64,11 @@ bind the local system to the container runtime with `--bind /etc/passwd`
 
 ## Building GUFI
 
-GUFI as of June 2022 cannot build from
-[googletest](https://github.com/mar-file-system/GUFI/issues/90)
+The bundled googletest tarball doesn't extract to the directory the pinned
+build expects ([GUFI#90](https://github.com/mar-file-system/GUFI/issues/90)),
+so delete it and let the build download googletest `main`. Current `main`
+no longer compiles with GUFI's C++11 unit tests, so also skip those; the
+reports don't need them.
 
 The reports use the older CLI options of the commit pinned in
 `singularity.def`, which needs an older cmake.
@@ -75,7 +78,8 @@ module load cmake/3.22.2
 git clone https://github.com/mar-file-system/GUFI.git
 cd GUFI
 git checkout -b build 226b604f4687ac055bde16f0d59742ad472fdb44
-rm contrib/deps/googletest.tar.gz 
+rm contrib/deps/googletest.tar.gz
+sed -i '/add_subdirectory(googletest)/d' test/unit/CMakeLists.txt
 mkdir build
 cd build
 cmake -DCMAKE_INSTALL_PREFIX=$HOME/gufi ..
