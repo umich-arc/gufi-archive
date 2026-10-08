@@ -67,13 +67,24 @@ bind the local system to the container runtime with `--bind /etc/passwd`
 GUFI as of June 2022 cannot build from
 [googletest](https://github.com/mar-file-system/GUFI/issues/90)
 
+The reports use the older CLI options of the commit pinned in
+`singularity.def`, which needs an older cmake (see [TODO.md](TODO.md)).
+
 ```
+module load cmake/3.22.2
 git clone https://github.com/mar-file-system/GUFI.git
 cd GUFI
+git checkout -b build 226b604f4687ac055bde16f0d59742ad472fdb44
 rm contrib/deps/googletest.tar.gz 
 mkdir build
 cd build
-cmake ..
+cmake -DCMAKE_INSTALL_PREFIX=$HOME/gufi ..
 make
 make install
+export PATH=$HOME/gufi/bin:$PATH
 ```
+
+To index files you don't own, run the index and reports as root on a host
+that mounts the filesystem with `no_root_squash`. Root's `PATH` must include
+the GUFI `bin` directory. Otherwise the reports fall back to looking for
+`gufi_master.sif` in the current directory.
