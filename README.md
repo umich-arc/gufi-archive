@@ -4,36 +4,40 @@ We use parts of [GUFI](https://github.com/mar-file-system/GUFI/) to perform high
 perfromance scanning of storage areas to make reports to better make decisions
 about the archiveability of data in massive volumes.
 
-## Singularity
+## Container
 
-Building the container on [sylabs](https://cloud.sylabs.io/tokens)
+**The Singularity definition file and the Sylabs library images
+(`library://brockp/gufi/gufi`) are retired and no longer updated.**
 
-```
-singularity remote login
-singularity build --remote gufi.sif singularity.def 
-singularity push -U  gufi.sif library://brockp/gufi/gufi:master
-singularity push -U  gufi.sif library://brockp/gufi/gufi:[tag]
-```
+gufi-archive is now published as a Docker / OCI image, which Singularity and
+[Apptainer](https://apptainer.org) pull and run directly without root.  The
+commands you already know still work; only the `pull` source changes:
 
 ```
-# running
-module load singularity
+# old (no longer updated)
 singularity pull --arch amd64 library://brockp/gufi/gufi:master
-singularity run-help gufi_master.sif
-singularity exec gufi_master.sif cmd
+
+# new
+singularity pull gufi.sif docker://ghcr.io/umich-arc/gufi-archive:latest
+
+# or with Apptainer
+apptainer pull gufi.sif docker://ghcr.io/umich-arc/gufi-archive:latest
 ```
+
+See [docker/README.md](docker/README.md) for full instructions, plain Docker
+usage, published tags and building the image.
 
 ## Reporting Scripts
 
 ```
 # build an index this is time consuming but is reused for many queries
-singularity exec gufi_master.sif gufi_dir2index -n <#threads> <inputdir> /tmp/GUFI
+singularity exec gufi.sif gufi_dir2index -n <#threads> <inputdir> /tmp/GUFI
 
 # run a summary report of how much not been accessed in X days
-singularity exec --bind /etc/passwd gufi_master.sif summary.sh /tmp/GUFI [days]
+singularity exec --bind /etc/passwd gufi.sif summary.sh /tmp/GUFI [days]
 
 # use GUFI ls to just list files
-singularity exec --bind /etc/passwd gufi_master.sif gufi_ls --help
+singularity exec --bind /etc/passwd gufi.sif gufi_ls --help
 ```
 
 ### Scripts
@@ -57,6 +61,10 @@ bind the local system to the container runtime with `--bind /etc/passwd`
 
 GUFI as of June 2022 cannot build from
 [googletest](https://github.com/mar-file-system/GUFI/issues/90)
+
+The reports use the older CLI options of the GUFI commit pinned by
+`GUFI_COMMIT` in [docker/Dockerfile](docker/Dockerfile); check out that commit
+for a native build.
 
 ```
 git clone https://github.com/mar-file-system/GUFI.git
