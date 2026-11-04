@@ -1,0 +1,361 @@
+#!/bin/bash
+umask 077
+
+# Set the GUFI library location, filename and architecture for singularity
+#GUFI_LIB="${GUFI_LIB:-library://brockp/gufi/gufi:master}"
+#GUFI_SIF="${GUFI_SIF:-gufi_master.sif}"
+GUFI_LIB="${GUFI_LIB:-docker://ghcr.io/umich-arc/gufi-archive:latest}"
+GUFI_SIF="${GUFI_SIF:-gufi.sif}"
+GUFI_ARCH="${GUFI_ARCH:-amd64}"
+
+dflt_nthreads=8		# positive integers only
+
+# /\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\
+# gufish - shell front-end to the GUFI Archive Scanning container
+# Steve Kinzler, kinzler@umich.edu, Feb 26
+# https://kinzler.com/me/home.html#unix
+# \/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/
+# See also https://github.com/umich-arc/gufi-archive
+#
+# https://github.com/umich-arc/storage-tools
+# https://bitbucket.org/umarcts/slurm-usertools
+
+# Process the command line arguments
+case "$1" in -q|--quiet) quiet=true; shift;; esac
+arg1="$1"; user="$2"
+suhow=; [[ "$user" == *:* ]] && suhow="${user%%:*}"
+user="${user##*:}"
+
+# Output the usage message
+case "$arg1" in
+-h|--help|'')	cat 1>&2 <<EOF
+usage: $0 [ -q ] { directory | index:directory } [ user | sudo:user ]
+	-q	quiet mode, do not output the welcome message
+
+Run a GUFI archive index scan on the given directory, then enter a
+bash shell with additional commands available to run reports from
+this index.  On exiting the shell, the index is usually deleted.
+If the given directory is prefixed with "index:" it is instead taken
+to be a temporary directory containing the index from a previous run
+of this program to use again for this run.
+
+If an user argument is provided, the indexing and shell will be run as
+that user and in their environment.  su privileges (or sudo privileges
+with the "sudo:" form) for the user will be required.
+
+Shell and gufi commands can be presented on standard input (stdin) to be
+run immediately after scanning.  End these commands with an "exit" command
+to cleanly quit; or end these commands with an "interact" command to
+remain at the shell prompt for further interaction.  For example:
+	echo 'gufi summary 90; interact' | $0 -q ~
+-or-	$0 -q ~ <<< 'gufi summary 90; interact'
+will automatically present an initial 90-day summary report on your
+home directory then accept further commands.
+
+Any .gufishrc file in the user's home directory (or in a file set
+in the GUFISHRC environment variable) will be sourced on startup.
+A non-empty environment variable GUFISH_QUIET will suppress the welcome
+message.  The environment variable GUFISH_NTHREADS is recognized as
+the number of processor threads to use for the indexing.  The default
+is $dflt_nthreads.  Note that higher numbers can be abusive on shared machines.
+The standard environment variable TMPDIR is recognized as an alternate
+location for the index instead of /tmp.
+
+singularity or apptainer must be installed and available for $0.
+
+EOF
+		exit 1;;
+esac
+
+# Prepare the shell rc file for its creation and cleanup
+rc=$(mktemp)
+chmod a+r "$rc"
+trap "rm -fr '$rc'; exit" EXIT HUP INT PIPE TERM
+
+# -- Generate the rc file -----------------------------------------------------
+
+cat > "$rc" <<'SHELL'
+# Load the user's regular bash environment, disable exit-via-^D, and set umask
+[ -f ~/.bashrc ] && source ~/.bashrc
+set -o ignoreeof
+umask 077
+
+# Fix any missing terminal type, and set a special prompt for gufish
+case "$TERM" in ''|unknown|color_xterm) export TERM=xterm;; esac
+export PS1='\[\e[1;32m\][\u@\h \W] GUFI\$\[\e[0m\] '
+
+# Determine the directory to index, or pre-existing index to use
+GUFISH_ARG1=$(echo "$GUFISH_ARG1" | sed 's/\/*$//')
+export GUFISH_TMP= GUFISH_DIR= GUFISH_BASE=
+case "$GUFISH_ARG1" in
+index:*) GUFISH_TMP="${GUFISH_ARG1#*:}"
+	 case "$GUFISH_TMP" in /*) ;; *) GUFISH_TMP="`pwd`/$GUFISH_TMP";; esac
+	 GUFISH_DIR=$( cat "$GUFISH_TMP/.gufish_dir"  2> /dev/null)
+	 GUFISH_BASE=$(cat "$GUFISH_TMP/.gufish_base" 2> /dev/null);;
+/*)	 GUFISH_DIR="$GUFISH_ARG1";;
+*)	 GUFISH_DIR="`pwd`/$GUFISH_ARG1";;
+esac
+export GUFISH_BASE="${GUFISH_BASE:-$(cd "$GUFISH_DIR" && basename $(pwd))}"
+unset GUFISH_ARG1
+if [ -z "$GUFISH_DIR" -o -z "$GUFISH_BASE" ]; then
+	echo 'gufish: ABORTING, cannot determine target directory' 1>&2
+								   exit 3
+fi
+
+# Create and enter the temporary working directory
+export GUFISH_TMP="${GUFISH_TMP:-${TMPDIR:-/tmp}/GUFI-$USER-$$}"
+trap "[[ '$GUFISH_TMP' == *'-keep'* ]] || rm -fr '$GUFISH_TMP'; exit" \
+	EXIT HUP INT PIPE TERM
+mkdir -p "$GUFISH_TMP"						|| exit 4
+
+pushd "$GUFISH_TMP" > /dev/null					|| exit 5
+
+# Attempt to load the singularity module if needed
+[    -z "`singularity 2>&1 | grep -i usage`" ] && module load singularity
+if [ -z "`singularity 2>&1 | grep -i usage`" ]; then
+	echo 'gufish: ABORTING, singularity not available' 1>&2;   exit 6
+fi
+
+# Download the GUFI library for use with singularity/apptainer
+if [ ! -f "$GUFI_SIF" ]; then
+	echo 'Downloading the GUFI library ...'
+	singularity pull --arch "$GUFI_ARCH" \
+			 "$GUFI_SIF" "$GUFI_LIB"		|| exit 7
+	echo 
+fi
+
+# Scan and index the directory if needed
+if [ -e "$GUFISH_BASE" ]; then
+	echo "Using pre-existing index $GUFISH_TMP/$GUFISH_BASE"
+	echo "containing a scan of $GUFISH_DIR"
+	echo "as scanned by $(cat .gufish_user) on $(cat .gufish_date)"
+else
+	echo "Indexing $GUFISH_DIR as $USER ..."
+	echo .snapshots		  > .skip			|| exit 8
+	echo "$GUFISH_DIR"	  > .gufish_dir			|| exit 8
+	echo "$GUFISH_BASE"	  > .gufish_base		|| exit 8
+	echo "$USER"		  > .gufish_user		|| exit 8
+	date +'%Y-%m-%d %H:%M:%S' > .gufish_date		|| exit 8
+	stdbuf -oL singularity exec "$GUFI_SIF" gufi_dir2index -k .skip \
+	    -n "${GUFISH_NTHREADS:-1}" "$GUFISH_DIR" . 2>&1 |
+		grep -v -i '"\." Already exists'
+fi
+echo
+
+# Ignore INT signals so user ^C doesn't exit
+trap : INT
+
+export GUFISH_USER=$(cat .gufish_user)
+export GUFISH_DATE=$(cat .gufish_date)
+
+popd > /dev/null
+
+# - Process special commands - - - - - - - - - - - - - - - - - - - - - - - - -
+
+# Define the "gufi" command
+gufi() {
+	# Define coloring escape codes (ANSI scheme)
+	local r=$(echo -e "\e[31m")	# red
+	local G=$(echo -e "\e[1;32m")	# bold green
+	local Y=$(echo -e "\e[1;33m")	# bold yellow
+	local b=$(echo -e "\e[34m")	# blue
+	local e=$(echo -e "\e[0m")	# end coloring
+
+	# Output the welcome/usage message
+	case "$1" in
+	us[ae]*|wel*|hel*|-h|--help|'')	cat <<EOF
+${G}Welcome to the GUFI Archive Scanning Shell
+------------------------------------------$e
+This is $USER's regular bash shell enhanced with additional commands
+to run GUFI Archive Scanning reports on this directory as scanned by
+$GUFISH_USER on $GUFISH_DATE:
+    $GUFISH_DIR
+
+Available GUFI Archive Scanning reporting commands:
+  "[$r...$e]" indicates optional arguments, which may be the word
+  "${Y}default$e".  Any subdirectory given must be relative to the
+  scanned directory.
+    ${Y}gufi dirsum$e [ $r#days$e [ ${r}subdirectory$e ] ]
+        Similar output to \`du --max-depth=1\` with totals and just data
+        last accessed more than ${r}#days$e ago.
+    ${Y}gufi summary$e [ $r#days$e [ ${r}subdirectory$e ] ]
+        Similar to dirsum but rather than using paths, reports on
+        data by UID, total data held by each, and total not accessed
+        in ${r}#days$e.
+    ${Y}gufi totals$e [ $r#days$e [ ${r}subdirectory$e ] ]
+        Returns the total for the entire path file count, total data,
+        and total data last accessed more than ${r}#days$e ago.
+    ${Y}gufi archivescan$e [ ${r}sizeMB$e [ ${r}subdirectory$e ] ]
+        Bins data into files over and under a given threshold and
+        reports count and total size.  Used for setting activearchive
+        configs, eg 100TB Data Den with 10TB Cache space.  Size is
+        filesize in MBytes.  For example,$b
+count   sizeGB cacheCnt cachesizeGB tapeCnt tapesizeGB arcGBratio arcCntRatio
+2115539 149798 2044612  4547        70927   145250     96         3$e
+        96% (arcGBratio) of data are in files larger than 100MB,
+        but is only 3% of the files.  The cache space for files less
+        than 100MB needs to be 4547GB (4.4TB) plus the cached tape
+        files large at least.
+
+Some available standard GUFI commands:
+  Run with a "${Y}--help$e" argument for usage.
+    ${Y}gufi ls$e
+    ${Y}gufi find$e
+
+Other special commands:
+    ${Y}gufi usage$e     output this message again
+    ${Y}gufi cdroot$e    change directory to the top of the indexed tree
+    ${Y}gufi info$e      output information about this gufi shell
+    ${Y}gufi howsave$e   instructions on preserving the index for future use
+    ${Y}gufi clean$e     delete index in $GUFISH_TMP on exit (default)
+    ${Y}gufi noclean$e   do not delete index in $GUFISH_TMP on exit
+    ${Y}exit$e           quit gufish
+EOF
+		return;;
+
+	# Output index information and environment variables
+	inf*|env*|sta*)
+		echo "Using index \"$GUFISH_BASE\" within $GUFISH_TMP"
+		echo "containing a scan of $GUFISH_DIR"
+		echo "as scanned by $GUFISH_USER on $GUFISH_DATE"
+		echo
+		local not=' NOT'
+		[[ "`trap -p EXIT`" == *' rm '* ]] && not=
+		not="$GUFISH_TMP will$not be deleted on exit"
+		# deletion unknown if in a non-main gufi shell
+		[[ "`trap -p EXIT`" == *'exit'* ]] || not=
+		[ -n "$not" ] && { echo "$not"; echo; }
+		env | grep '^GUFI' | sort; return;;
+
+	# Output instructions for index reuse
+	how*)	cat <<EOF
+To prevent the deletion of the index upon exiting this gufish shell,
+run "gufi noclean", or move or rename its directory before exit:
+    $GUFISH_TMP
+To reuse this index with a later gufish shell, provide the directory
+(${r}INDEX_DIR$e) to the gufish command like so:
+    ${Y}gufish index:$e${r}INDEX_DIR$e
+Note that the index will be deleted upon exiting this shell unless
+"gufi noclean" is run again, or the directory is moved or renamed
+again before exit, or it has the string "-keep" within its name.
+EOF
+		return;;
+
+	# Run cleanup toggling commands
+	cle*)	trap "[[ '$GUFISH_TMP' == *'-keep'* ]] || rm -fr '$GUFISH_TMP'
+		      exit" EXIT HUP PIPE TERM; return;;
+	noc*)	trap exit   EXIT HUP PIPE TERM; return;;
+
+	# Run change directory commands
+	cdroot)	cd "$GUFISH_DIR"; return;;
+	esac
+
+	local cmd='singularity exec --bind /etc/passwd,/etc/group'
+
+	# Run supported gufi_* GUFI commands
+	case "$1" in ls|find|getfattr|stat|stats|query)
+		arg1="$1"; shift
+		cmd="$cmd --bind $GUFISH_TMP/$GUFISH_BASE:/tmp/GUFI"
+		$cmd "$GUFISH_TMP/$GUFI_SIF" gufi_$arg1 ${1+"$@"}
+		return;;
+	esac
+
+	# Process the function arguments for reports
+	local arg2="${2/default/}"		# "default" -> ""
+	local subdir="${3/default/}"		# "default" -> ""
+	      subdir=${subdir:+/${subdir#/}}	# prepend any missing "/"
+
+	# Run the requested report
+	local report=
+	case "$1" in
+	sum*)	report=summary.sh;;	dir*)	report=dirsum.sh;;
+	tot*)	report=totals.sh;;	arc*)	report=archivescan.sh;;
+	*)	echo "${FUNCNAME[0]}: unknown action ($1)" 1>&2; return 1;;
+	esac
+	$cmd "$GUFISH_TMP/$GUFI_SIF" \
+	    $report "$GUFISH_TMP/$GUFISH_BASE$subdir" "$arg2"
+}
+export -f gufi
+
+# Define the "interact" command
+interact() { exec < /dev/tty; }
+export -f interact
+
+# - Define command completions - - - - - - - - - - - - - - - - - - - - - - - -
+
+# Complete arguments to the gufi command (except subdirectories)
+_gufi_completion() {
+	local cur="${COMP_WORDS[COMP_CWORD]}"
+	local cword=$COMP_CWORD
+	local cmds='dirsum summary totals archivescan usage cdroot info'
+	      cmds="$cmds howsave clean noclean ls find"
+	local cmd=
+
+	# Complete 1st argument subcommands
+	[ "$cword" -eq 1 ] && { COMPREPLY=($(compgen -W "$cmds" -- "$cur"))
+				return; }
+
+	# Determine any subcommand
+	for word in "${COMP_WORDS[@]}"; do
+		for c in $cmds; do
+			[[ "$word" == "$c" ]] && { cmd="$c"; break 2; }
+		done
+	done
+
+	# Complete with some suggested #days or sizeMBs
+	case "$cmd,$((cword - 2))" in
+	dirsum,0|summary,0|totals,0)
+	    COMPREPLY=($(compgen -W "default 30 90 180 365 1826" -- "$cur"))
+	    return;;
+	archivescan,0)
+	    COMPREPLY=($(compgen -W "default 50 100 500 1000"    -- "$cur"))
+	    return;;
+	esac
+	COMPREPLY=()
+}
+complete -F _gufi_completion gufi
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+# Load the user's gufish rc file
+export GUFISHRC="${GUFISHRC:-$HOME/.gufishrc}"
+[ -f "$GUFISHRC" ] && source "$GUFISHRC"
+
+# Output the welcome/usage message on startup
+[ -z "$GUFISH_QUIET" ] && { gufi welcome; echo; }
+SHELL
+
+# -----------------------------------------------------------------------------
+
+# Sanitize and export the GUFI variables
+export GUFI_LIB="${GUFI_LIB//\'/}"
+export GUFI_SIF="${GUFI_SIF//\'/}"
+export GUFI_ARCH="${GUFI_ARCH//\'/}"
+
+# Determine quiet mode and number of threads to use for scanning
+export GUFISH_QUIET=${quiet-$GUFISH_QUIET}
+       GUFISH_QUIET="${GUFISH_QUIET:+true}"	# set either '' or 'true'
+[[ "$GUFISH_NTHREADS" =~ ^[0-9]+$ ]] || GUFISH_NTHREADS="$dflt_nthreads"
+export GUFISH_NTHREADS				# set either integer or dflt
+
+# Without a special user, just start a shell with the rc file
+case "$user" in
+''|"$USER")	GUFISH_ARG1="$arg1" bash --rcfile "$rc" -i; exit;;
+esac
+
+# Sanitize the target directory variable for single-quote embedding
+arg1="${arg1//\'/\'\\\'\'}"
+
+echo 'You may disregard any "Inappropriate ioctl" warning:'
+# Note: Using the experimental -P flag to su will eliminate the ioctl warning,
+#	but cause problems for command line editing and subshell exits
+
+# Escalate to the special user and start a shell with the rc file
+env="GUFISH_ARG1='$arg1' GUFISH_NTHREADS='$GUFISH_NTHREADS'"
+env="$env GUFI_LIB='$GUFI_LIB' GUFI_SIF='$GUFI_SIF' GUFI_ARCH='$GUFI_ARCH'"
+env="$env GUFISH_QUIET='$GUFISH_QUIET'"
+case "$suhow" in
+''|su)	     su -s /bin/bash -c "$env exec bash --rcfile '$rc' -i" "$user";;
+sudo)	sudo su -s /bin/bash -c "$env exec bash --rcfile '$rc' -i" "$user";;
+*)	echo "$0: unknown su method ($suhow)" 1>&2; exit 2;;
+esac
