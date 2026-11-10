@@ -57,6 +57,15 @@ The continer doesn't know about UID's and groups other than the user invoking
 it. To correctly resolve the UID and GID's stored in the GUFI index you need to
 bind the local system to the container runtime with `--bind /etc/passwd`
 
+### Using GUFI-Shell gufish, a shell front-end to all this
+
+A simple way to use the GUFI Archive Scanning container and reports
+is via the gufish script here.  Make sure you have singularity or
+apptainer installed.  Run this Bash script without arguments for usage.
+Run it with a directory as an argument to index that directory and
+enter your regular bash shell with additional commands to run reports
+on the index.
+
 ## Building GUFI
 
 GUFI as of June 2022 cannot build from
