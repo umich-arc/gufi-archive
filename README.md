@@ -49,7 +49,16 @@ singularity exec --bind /etc/passwd gufi.sif gufi_ls --help
  * `dirsum.sh /tmp/GUFI/dir [days]` Show totals in each directory below the
    given directory and files not accessed in 180 days
  * `totals.sh /tmp/GUFI/dir [days]` Summary similar to `du -s`
+ * `dirtotals.sh /tmp/GUFI/dir [days]` `dirsum.sh` and `totals.sh` together
+   from one read of the index instead of two.
  * `archivescan.sh /tmp/GUFI/dir [sizeMB]` Bucket data into over size and under.
+
+### Threads
+
+`dirsum.sh`, `totals.sh` and `dirtotals.sh` run 8 threads. Set `GUFI_THREADS`
+to change that, for example `GUFI_THREADS=32 dirtotals.sh /tmp/GUFI`. An index
+on spinning disk is limited by seeks rather than CPU, and more threads keep
+more reads queued for the drive to reorder.
 
 ### Resolving groups and users
 

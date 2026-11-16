@@ -30,6 +30,27 @@ folder3                                           8119     1307    1307     100
 folder4                                           1098     291     207      71
 ```
 
+# dirtotals.sh
+
+`dirtotals.sh [days]`
+
+The `dirsum.sh` table followed by the `totals.sh` row. Every report reads the
+whole index, which is the slow part when the index sits on spinning disk, so
+this reads it once for both.
+
+```
+dirtotals.sh /tmp/GUFI/path 180
+
+directory  count    sizeGB  oldsize  percent
+folder1    80256    115     115      100%
+folder2    8189     1269    1269     100%
+folder4    1098     291     207      71%
+
+----------------- Path Totals -----------------
+count  sizeGB  oldsize  percent
+89543  1675    1591     94%
+```
+
 # summary.sh
 
 `summary.sh [days]`
