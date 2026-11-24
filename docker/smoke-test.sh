@@ -83,7 +83,8 @@ for report in totals.sh dirtotals.sh; do
 done
 
 echo "-- the drill-down cache answers the same as a fresh walk"
-walked=$(GUFI_CACHE=0 run dirtotals.sh "$index" 90 | grep -v '^$')
+# docker run does not pass the host environment through, so set it inside
+walked=$(run env GUFI_CACHE=0 dirtotals.sh "$index" 90 | grep -v '^$')
 run dirtotals.sh "$index" 180 > /dev/null
 cached=$(run dirtotals.sh "$index" 90)
 if ! grep -q '^Using sums cached' <<< "$cached"; then
