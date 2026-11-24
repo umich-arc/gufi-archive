@@ -13,5 +13,5 @@ echo "Using GUFI Index located in: $1"
 echo "Reporting on data older than $DAYS days last accessed"
 echo ""
 
-dirstats_walk "$1" "$DAYS"
-print_totals | column -s '|' -t
+dirstats_load "$1" "$DAYS" 0
+print_totals "$DAYS" | column -s '|' -t

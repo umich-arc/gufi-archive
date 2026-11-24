@@ -60,6 +60,27 @@ to change that, for example `GUFI_THREADS=32 dirtotals.sh /tmp/GUFI`. An index
 on spinning disk is limited by seeks rather than CPU, and more threads keep
 more reads queued for the drive to reorder.
 
+### Drill-down cache
+
+The first `dirsum.sh`, `totals.sh` or `dirtotals.sh` on an index walks all of
+it and saves the per-directory sums in a small hidden file at the top of what
+it walked (`.gufi-archive-cache-v1-depth5.db`). After that, the same reports on
+that path or any directory up to 5 levels below it answer from the file in
+seconds instead of walking the index again, as long as `days` is one of 30, 60,
+90, 120, 150, 180, 270, 365, 730, 1095 or 1826. The output then starts with a
+`Using sums cached` line.
+
+Anything else walks the index as before: another `days` value, a directory
+deeper than the cache reaches, a cache from an earlier day (the cutoffs count
+from midnight UTC), or an index rebuilt since the cache was made. Nothing is
+off limits, it is only slower.
+
+ * `GUFI_CACHE=0` (or `false`, `no`, `off`) always walks and never writes a
+   cache.
+ * `GUFI_CACHE_DEPTH` changes how many levels the cache keeps, 5 by default.
+ * An index you cannot write to just isn't cached. Deleting the index deletes
+   its cache.
+
 ### Resolving groups and users
 
 The continer doesn't know about UID's and groups other than the user invoking

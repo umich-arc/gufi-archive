@@ -38,6 +38,10 @@ The `dirsum.sh` table followed by the `totals.sh` row. Every report reads the
 whole index, which is the slow part when the index sits on spinning disk, so
 this reads it once for both.
 
+Later runs on the same index, or on a directory up to 5 levels inside it,
+answer from the drill-down cache without reading the index again. See the
+[README](README.md#drill-down-cache).
+
 ```
 dirtotals.sh /tmp/GUFI/path 180
 

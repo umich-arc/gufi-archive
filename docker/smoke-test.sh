@@ -82,4 +82,20 @@ for report in totals.sh dirtotals.sh; do
     echo "ok $report ($total files)"
 done
 
+echo "-- the drill-down cache answers the same as a fresh walk"
+walked=$(GUFI_CACHE=0 run dirtotals.sh "$index" 90 | grep -v '^$')
+run dirtotals.sh "$index" 180 > /dev/null
+cached=$(run dirtotals.sh "$index" 90)
+if ! grep -q '^Using sums cached' <<< "$cached"; then
+    echo "$cached"
+    echo "FAIL dirtotals.sh did not use the cache"
+    exit 1
+fi
+if [ "$(grep -v -e '^Using sums cached' -e '^(set GUFI_CACHE' -e '^$' <<< "$cached")" != "$walked" ]; then
+    echo "$cached"
+    echo "FAIL cached dirtotals.sh differs from a walk"
+    exit 1
+fi
+echo "ok cache matches walk"
+
 echo "== all smoke tests passed"
