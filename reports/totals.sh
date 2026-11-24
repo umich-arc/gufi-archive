@@ -2,7 +2,7 @@
 
 # just show the totals for a path, don't worry about user or folder data
 
-. "$(dirname "$(readlink -f "$0")")/lib.sh"
+. "$(dirname "$(readlink -f "$0")")/lib.bash"
 
 DAYS=${2:-180}
 

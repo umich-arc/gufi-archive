@@ -2,7 +2,7 @@
 
 # dirsum.sh and totals.sh from a single walk of the index
 
-. "$(dirname "$(readlink -f "$0")")/lib.sh"
+. "$(dirname "$(readlink -f "$0")")/lib.bash"
 
 DAYS=${2:-180}
 

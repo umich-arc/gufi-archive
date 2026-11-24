@@ -71,4 +71,15 @@ if [ "$total" != "$nfiles" ]; then
     exit 1
 fi
 
+echo "-- totals.sh and dirtotals.sh count every indexed file"
+# both print a count header then the totals row last
+for report in totals.sh dirtotals.sh; do
+    total=$(run "$report" "$index" 180 | awk 'NF {last = $1} END {print last}')
+    if [ "$total" != "$nfiles" ]; then
+        echo "FAIL $report total count is '$total', expected $nfiles"
+        exit 1
+    fi
+    echo "ok $report ($total files)"
+done
+
 echo "== all smoke tests passed"
