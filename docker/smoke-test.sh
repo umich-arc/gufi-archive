@@ -92,11 +92,23 @@ if ! grep -q '^Using sums cached' <<< "$cached"; then
     echo "FAIL dirtotals.sh did not use the cache"
     exit 1
 fi
-if [ "$(grep -v -e '^Using sums cached' -e '^(set GUFI_CACHE' -e '^$' <<< "$cached")" != "$walked" ]; then
+if [ "$(grep -v -e '^Using sums cached' -e '^Ages count back' -e '^(set GUFI_CACHE' -e '^$' <<< "$cached")" != "$walked" ]; then
     echo "$cached"
     echo "FAIL cached dirtotals.sh differs from a walk"
     exit 1
 fi
 echo "ok cache matches walk"
+
+echo "-- a cache from an earlier day is still used, with its own date"
+touch -d '3 days ago' "$workdir/idx/src/db.db"
+touch -d '2 days ago' "$workdir"/idx/src/.gufi-archive-cache-*
+cached=$(run totals.sh "$index" 90)
+if ! grep -q '^Using sums cached' <<< "$cached" ||
+    ! grep -q "^Ages count back from $(date -u +%F)" <<< "$cached"; then
+    echo "$cached"
+    echo "FAIL totals.sh did not use the older cache"
+    exit 1
+fi
+echo "ok two-day-old cache used, ages still from the day it was made"
 
 echo "== all smoke tests passed"

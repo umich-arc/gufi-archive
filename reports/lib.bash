@@ -14,7 +14,7 @@ CACHE_DEPTH=${GUFI_CACHE_DEPTH:-5}
 # GUFI_CACHE=0 (or false, no, off) always walks and never writes a cache
 CACHE=yes
 case "${GUFI_CACHE,,}" in 0|false|no|off) CACHE="" ;; esac
-CACHE_NAME=".gufi-archive-cache-v1-depth$CACHE_DEPTH.db"
+CACHE_NAME=".gufi-archive-cache-v2-depth$CACHE_DEPTH.db"
 
 # days cutoffs every walk computes, so the cache answers these without a walk
 AGE_BUCKETS="30 60 90 120 150 180 270 365 730 1095 1826"
@@ -62,21 +62,21 @@ dirstats_load () {
 
 # look in the path and each parent inside the index for a usable cache
 #
-# A cache is usable if it was made today (cutoffs are midnight UTC), after the
-# index was built, holds the requested days, and reaches deep enough.
+# A cache is usable if it was made after the index was built, holds the
+# requested days, and reaches deep enough.  The index is a snapshot, so a cache
+# keeps its ages counted from the day it was made, however long ago that was.
 dirstats_find_cache () {
 	local index_path=$1
 	local days=$2
 	local levels_below=$3
-	local real_path dir cache rel depth
+	local real_path dir cache rel depth asof
 
 	[[ " $AGE_BUCKETS " == *" $days "* ]] || return 1
 	real_path=$(realpath "$index_path") || return 1
 	dir=$real_path
 	while [ -f "$dir/db.db" ]; do
 		cache="$dir/$CACHE_NAME"
-		if [ -f "$cache" ] && [ "$cache" -nt "$dir/db.db" ] &&
-			[ "$(date -u -r "$cache" +%F)" = "$(date -u +%F)" ]; then
+		if [ -f "$cache" ] && [ "$cache" -nt "$dir/db.db" ]; then
 			rel=${real_path#"$dir"}
 			rel=${rel#/}
 			depth=0
@@ -84,7 +84,10 @@ dirstats_find_cache () {
 			if [ $((depth + levels_below)) -le "$CACHE_DEPTH" ]; then
 				DIRSTATS=$cache
 				DIRSTATS_REL=$rel
+				asof=$($QUERYDBS -V asof asof "SELECT MAX(midnight) FROM vasof;" \
+					"$cache" | grep -o '^[0-9]*')
 				echo "Using sums cached $(date -r "$cache" '+%Y-%m-%d %H:%M') in $dir"
+				echo "Ages count back from $(date -u -d "@$asof" "+%F %H:%M") UTC, when the sums were made"
 				echo "(set GUFI_CACHE=0 to walk the index again)"
 				echo ""
 				return 0
@@ -109,7 +112,8 @@ age_columns () {
 # Each directory's row is keyed by its path relative to the index argument,
 # cut to CACHE_DEPTH components, so the result stays small however deep the
 # tree goes.  Files directly in the index argument get the key ''.  Column
-# oldN holds the bytes last accessed more than N days ago.
+# oldN holds the bytes last accessed more than N days before midnight UTC
+# today, and table asof records that midnight for later readers of a cache.
 dirstats_walk () {
 	local index_path=$1
 	local days=$2
@@ -139,9 +143,11 @@ dirstats_walk () {
 			SELECT (SELECT rtrim(keep, '/') FROM cut ORDER BY depth DESC LIMIT 1), \
 				uid, COUNT(*), SUM(size)$column_sums \
 			FROM entries WHERE type='f' GROUP BY uid;" \
-		-K "CREATE TABLE dirstats (dir text, uid int64, cnt int64, bytes int64$column_defs);" \
+		-K "CREATE TABLE dirstats (dir text, uid int64, cnt int64, bytes int64$column_defs); \
+			CREATE TABLE asof (midnight int64);" \
 		-J "INSERT INTO dirstats SELECT dir, uid, SUM(cnt), SUM(bytes)$column_totals \
-			FROM stats GROUP BY dir, uid;" \
+			FROM stats GROUP BY dir, uid; \
+			INSERT INTO asof VALUES ($midnight_epoch);" \
 		-O "$DIRSTATS" "$index_path"
 }
 

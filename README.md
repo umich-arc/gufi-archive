@@ -64,16 +64,20 @@ more reads queued for the drive to reorder.
 
 The first `dirsum.sh`, `totals.sh` or `dirtotals.sh` on an index walks all of
 it and saves the per-directory sums in a small hidden file at the top of what
-it walked (`.gufi-archive-cache-v1-depth5.db`). After that, the same reports on
+it walked (`.gufi-archive-cache-v2-depth5.db`). After that, the same reports on
 that path or any directory up to 5 levels below it answer from the file in
 seconds instead of walking the index again, as long as `days` is one of 30, 60,
 90, 120, 150, 180, 270, 365, 730, 1095 or 1826. The output then starts with a
 `Using sums cached` line.
 
+The index is a snapshot, so the cache keeps being used on later days and its
+ages count from the day it was made, which the output names. A walk counts
+ages from midnight UTC today.
+
 Anything else walks the index as before: another `days` value, a directory
-deeper than the cache reaches, a cache from an earlier day (the cutoffs count
-from midnight UTC), or an index rebuilt since the cache was made. Nothing is
-off limits, it is only slower.
+deeper than the cache reaches, or an index rebuilt since the cache was made.
+Nothing is off limits, it is only slower. To count ages from today instead,
+walk again with `GUFI_CACHE=0`; that run does not replace the cache.
 
  * `GUFI_CACHE=0` (or `false`, `no`, `off`) always walks and never writes a
    cache.
