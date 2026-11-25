@@ -71,4 +71,44 @@ if [ "$total" != "$nfiles" ]; then
     exit 1
 fi
 
+echo "-- totals.sh and dirtotals.sh count every indexed file"
+# both print a count header then the totals row last
+for report in totals.sh dirtotals.sh; do
+    total=$(run "$report" "$index" 180 | awk 'NF {last = $1} END {print last}')
+    if [ "$total" != "$nfiles" ]; then
+        echo "FAIL $report total count is '$total', expected $nfiles"
+        exit 1
+    fi
+    echo "ok $report ($total files)"
+done
+
+echo "-- the drill-down cache answers the same as a fresh walk"
+# docker run does not pass the host environment through, so set it inside
+walked=$(run env GUFI_CACHE=0 dirtotals.sh "$index" 90 | grep -v '^$')
+run dirtotals.sh "$index" 180 > /dev/null
+cached=$(run dirtotals.sh "$index" 90)
+if ! grep -q '^Using sums cached' <<< "$cached"; then
+    echo "$cached"
+    echo "FAIL dirtotals.sh did not use the cache"
+    exit 1
+fi
+if [ "$(grep -v -e '^Using sums cached' -e '^Ages count back' -e '^(set GUFI_CACHE' -e '^$' <<< "$cached")" != "$walked" ]; then
+    echo "$cached"
+    echo "FAIL cached dirtotals.sh differs from a walk"
+    exit 1
+fi
+echo "ok cache matches walk"
+
+echo "-- a cache from an earlier day is still used, with its own date"
+touch -d '3 days ago' "$workdir/idx/src/db.db"
+touch -d '2 days ago' "$workdir"/idx/src/.gufi-archive-cache-*
+cached=$(run totals.sh "$index" 90)
+if ! grep -q '^Using sums cached' <<< "$cached" ||
+    ! grep -q "^Ages count back from $(date -u +%F)" <<< "$cached"; then
+    echo "$cached"
+    echo "FAIL totals.sh did not use the older cache"
+    exit 1
+fi
+echo "ok two-day-old cache used, ages still from the day it was made"
+
 echo "== all smoke tests passed"

@@ -49,7 +49,41 @@ singularity exec --bind /etc/passwd gufi.sif gufi_ls --help
  * `dirsum.sh /tmp/GUFI/dir [days]` Show totals in each directory below the
    given directory and files not accessed in 180 days
  * `totals.sh /tmp/GUFI/dir [days]` Summary similar to `du -s`
+ * `dirtotals.sh /tmp/GUFI/dir [days]` `dirsum.sh` and `totals.sh` together
+   from one read of the index instead of two.
  * `archivescan.sh /tmp/GUFI/dir [sizeMB]` Bucket data into over size and under.
+
+### Threads
+
+`dirsum.sh`, `totals.sh` and `dirtotals.sh` run 8 threads. Set `GUFI_THREADS`
+to change that, for example `GUFI_THREADS=32 dirtotals.sh /tmp/GUFI`. An index
+on spinning disk is limited by seeks rather than CPU, and more threads keep
+more reads queued for the drive to reorder.
+
+### Drill-down cache
+
+The first `dirsum.sh`, `totals.sh`, `dirtotals.sh` or `summary.sh` on an index walks all of
+it and saves the per-directory sums in a small hidden file at the top of what
+it walked (`.gufi-archive-cache-v2-depth5.db`). After that, the same reports on
+that path or any directory up to 5 levels below it answer from the file in
+seconds instead of walking the index again, as long as `days` is one of 30, 60,
+90, 120, 150, 180, 270, 365, 730, 1095 or 1826. The output then starts with a
+`Using sums cached` line.
+
+The index is a snapshot, so the cache keeps being used on later days and its
+ages count from the day it was made, which the output names. A walk counts
+ages from midnight UTC today.
+
+Anything else walks the index as before: another `days` value, a directory
+deeper than the cache reaches, or an index rebuilt since the cache was made.
+Nothing is off limits, it is only slower. To count ages from today instead,
+walk again with `GUFI_CACHE=0`; that run does not replace the cache.
+
+ * `GUFI_CACHE=0` (or `false`, `no`, `off`) always walks and never writes a
+   cache.
+ * `GUFI_CACHE_DEPTH` changes how many levels the cache keeps, 5 by default.
+ * An index you cannot write to just isn't cached. Deleting the index deletes
+   its cache.
 
 ### Resolving groups and users
 
