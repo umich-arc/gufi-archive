@@ -62,6 +62,9 @@ count  sizeGB  oldsize  percent
 Similar to `dirsum.sh` but rahter than using paths, report on data by UID, total
 data held by each and total not accessed in `days` days.
 
+It shares the walk and [drill-down cache](README.md#drill-down-cache) with
+`dirsum.sh` and `totals.sh`, so after either of those it needs no walk.
+
 ```
 summary.sh /tmp/GUFI/path 180
 

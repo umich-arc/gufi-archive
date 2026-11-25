@@ -62,7 +62,7 @@ more reads queued for the drive to reorder.
 
 ### Drill-down cache
 
-The first `dirsum.sh`, `totals.sh` or `dirtotals.sh` on an index walks all of
+The first `dirsum.sh`, `totals.sh`, `dirtotals.sh` or `summary.sh` on an index walks all of
 it and saves the per-directory sums in a small hidden file at the top of what
 it walked (`.gufi-archive-cache-v2-depth5.db`). After that, the same reports on
 that path or any directory up to 5 levels below it answer from the file in
