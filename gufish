@@ -196,20 +196,23 @@ $GUFISH_USER on $GUFISH_DATE:
     $GUFISH_DIR
 
 Available GUFI Archive Scanning reporting commands:
-  "[$r...$e]" indicates optional arguments, which may be the word
-  "${Y}default$e".  Any subdirectory given must be relative to the
-  scanned directory.
-    ${Y}gufi dirsum$e [ $r#days$e [ ${r}subdirectory$e ] ]
+  "[$r...$e]" indicates optional arguments, given in any order.  A
+  subdirectory counts from your current directory when you are inside
+  the scanned tree (see "gufi cdroot"), otherwise from its top.  With
+  no subdirectory, reports cover your current directory when inside the
+  tree, otherwise all of it.  Write a directory named only with digits
+  as ./2024 so it is not taken as #days.
+    ${Y}gufi dirsum$e [ $r#days$e ] [ ${r}subdirectory$e ]
         Similar output to \`du --max-depth=1\` with totals and just data
         last accessed more than ${r}#days$e ago.
-    ${Y}gufi summary$e [ $r#days$e [ ${r}subdirectory$e ] ]
+    ${Y}gufi summary$e [ $r#days$e ] [ ${r}subdirectory$e ]
         Similar to dirsum but rather than using paths, reports on
         data by UID, total data held by each, and total not accessed
         in ${r}#days$e.
-    ${Y}gufi totals$e [ $r#days$e [ ${r}subdirectory$e ] ]
+    ${Y}gufi totals$e [ $r#days$e ] [ ${r}subdirectory$e ]
         Returns the total for the entire path file count, total data,
         and total data last accessed more than ${r}#days$e ago.
-    ${Y}gufi archivescan$e [ ${r}sizeMB$e [ ${r}subdirectory$e ] ]
+    ${Y}gufi archivescan$e [ ${r}sizeMB$e ] [ ${r}subdirectory$e ]
         Bins data into files over and under a given threshold and
         reports count and total size.  Used for setting activearchive
         configs, eg 100TB Data Den with 10TB Cache space.  Size is
@@ -285,17 +288,40 @@ EOF
 		return;;
 	esac
 
-	# Process the function arguments for reports
-	local arg2="${2/default/}"		# "default" -> ""
-	local subdir="${3/default/}"		# "default" -> ""
-	      subdir=${subdir:+/${subdir#/}}	# prepend any missing "/"
+	# Process the function arguments for reports, in either order: a
+	# whole number is #days (or sizeMB), anything else a directory
+	local action="$1" arg2= path= word; shift
+	for word in "$@"; do
+		case "$word" in
+		default) ;;
+		''|*[!0-9]*) path="$word";;
+		*)	arg2="$word";;
+		esac
+	done
+
+	# A directory counts from where you are when inside the scanned tree,
+	# else from its top; with none given, inside the tree means here
+	local root here target subdir
+	root=$(cd -P "$GUFISH_DIR" 2> /dev/null && pwd) || root="$GUFISH_DIR"
+	here=$(pwd -P)
+	case "$here/" in "$root"/*) ;; *) here="$root";; esac
+	case "$path" in
+	'')	target="$here";;
+	/*)	target=$(realpath -m "$path");;
+	*)	target=$(realpath -m "$here/$path");;
+	esac
+	case "$target/" in
+	"$root"/*) subdir="${target#"$root"}";;
+	*)	echo "${FUNCNAME[0]}: $target is not inside $root" 1>&2
+		return 1;;
+	esac
 
 	# Run the requested report
 	local report=
-	case "$1" in
+	case "$action" in
 	sum*)	report=summary.sh;;	dir*)	report=dirsum.sh;;
 	tot*)	report=totals.sh;;	arc*)	report=archivescan.sh;;
-	*)	echo "${FUNCNAME[0]}: unknown action ($1)" 1>&2; return 1;;
+	*)	echo "${FUNCNAME[0]}: unknown action ($action)" 1>&2; return 1;;
 	esac
 	$cmd "$GUFISH_TMP/$GUFI_SIF" \
 	    $report "$GUFISH_TMP/$GUFISH_BASE$subdir" "$arg2"
