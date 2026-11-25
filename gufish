@@ -61,7 +61,10 @@ is $dflt_nthreads.  Note that higher numbers can be abusive on shared machines.
 The standard environment variable TMPDIR is recognized as an alternate
 location for the index instead of /tmp.
 
-singularity or apptainer must be installed and available for $0.
+apptainer or singularity must be installed and available for $0.
+If neither works and a "module" command exists, "module load apptainer"
+then "module load singularity" are tried.  GUFI_THREADS, GUFI_CACHE and
+GUFI_CACHE_DEPTH are passed on to the reports; see the gufi-archive README.
 
 EOF
 		exit 1;;
@@ -110,16 +113,32 @@ mkdir -p "$GUFISH_TMP"						|| exit 4
 
 pushd "$GUFISH_TMP" > /dev/null					|| exit 5
 
-# Attempt to load the singularity module if needed
-[    -z "`singularity 2>&1 | grep -i usage`" ] && module load singularity
-if [ -z "`singularity 2>&1 | grep -i usage`" ]; then
-	echo 'gufish: ABORTING, singularity not available' 1>&2;   exit 6
+# Find a working apptainer, else singularity.  Some sites put a stub
+# singularity on PATH that only says to load a module, so a runtime counts
+# only if it reports a version number.
+gufish_runtime() {
+	local rt
+	for rt in apptainer singularity; do
+		"$rt" --version 2> /dev/null | grep -qiE 'version [0-9]' &&
+			{ echo "$rt"; return 0; }
+	done
+	return 1
+}
+export GUFISH_RT=$(gufish_runtime)
+if [ -z "$GUFISH_RT" ] && type module > /dev/null 2>&1; then
+	module load apptainer > /dev/null 2>&1 ||
+		module load singularity > /dev/null 2>&1
+	GUFISH_RT=$(gufish_runtime)
+fi
+if [ -z "$GUFISH_RT" ]; then
+	echo 'gufish: ABORTING, neither apptainer nor singularity is available' 1>&2
+								   exit 6
 fi
 
 # Download the GUFI library for use with singularity/apptainer
 if [ ! -f "$GUFI_SIF" ]; then
 	echo 'Downloading the GUFI library ...'
-	singularity pull --arch "$GUFI_ARCH" \
+	"$GUFISH_RT" pull --arch "$GUFI_ARCH" \
 			 "$GUFI_SIF" "$GUFI_LIB"		|| exit 7
 	echo 
 fi
@@ -131,12 +150,14 @@ if [ -e "$GUFISH_BASE" ]; then
 	echo "as scanned by $(cat .gufish_user) on $(cat .gufish_date)"
 else
 	echo "Indexing $GUFISH_DIR as $USER ..."
-	echo .snapshots		  > .skip			|| exit 8
+	printf '%s\n' .snapshot .snapshots .zfs > .skip		|| exit 8
 	echo "$GUFISH_DIR"	  > .gufish_dir			|| exit 8
 	echo "$GUFISH_BASE"	  > .gufish_base		|| exit 8
 	echo "$USER"		  > .gufish_user		|| exit 8
 	date +'%Y-%m-%d %H:%M:%S' > .gufish_date		|| exit 8
-	stdbuf -oL singularity exec "$GUFI_SIF" gufi_dir2index -k .skip \
+	# the container sees only what is bound, so bind the directory to index
+	stdbuf -oL "$GUFISH_RT" exec --bind "$GUFISH_DIR:$GUFISH_DIR:ro" \
+	    "$GUFI_SIF" gufi_dir2index -k .skip \
 	    -n "${GUFISH_NTHREADS:-1}" "$GUFISH_DIR" . 2>&1 |
 		grep -v -i '"\." Already exists'
 fi
@@ -144,6 +165,9 @@ echo
 
 # Ignore INT signals so user ^C doesn't exit
 trap : INT
+
+# the reports read GUFI_THREADS; apptainer passes the environment through
+export GUFI_THREADS="${GUFI_THREADS:-$GUFISH_NTHREADS}"
 
 export GUFISH_USER=$(cat .gufish_user)
 export GUFISH_DATE=$(cat .gufish_date)
@@ -250,7 +274,8 @@ EOF
 	cdroot)	cd "$GUFISH_DIR"; return;;
 	esac
 
-	local cmd='singularity exec --bind /etc/passwd,/etc/group'
+	# bind the index too, in case it is outside the default binds
+	local cmd="$GUFISH_RT exec --bind /etc/passwd,/etc/group --bind $GUFISH_TMP"
 
 	# Run supported gufi_* GUFI commands
 	case "$1" in ls|find|getfattr|stat|stats|query)
@@ -354,6 +379,9 @@ echo 'You may disregard any "Inappropriate ioctl" warning:'
 env="GUFISH_ARG1='$arg1' GUFISH_NTHREADS='$GUFISH_NTHREADS'"
 env="$env GUFI_LIB='$GUFI_LIB' GUFI_SIF='$GUFI_SIF' GUFI_ARCH='$GUFI_ARCH'"
 env="$env GUFISH_QUIET='$GUFISH_QUIET'"
+for var in GUFI_THREADS GUFI_CACHE GUFI_CACHE_DEPTH; do
+	[ -n "${!var}" ] && env="$env $var='${!var//\'/}'"
+done
 case "$suhow" in
 ''|su)	     su -s /bin/bash -c "$env exec bash --rcfile '$rc' -i" "$user";;
 sudo)	sudo su -s /bin/bash -c "$env exec bash --rcfile '$rc' -i" "$user";;
