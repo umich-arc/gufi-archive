@@ -1,11 +1,9 @@
 #!/bin/bash
 umask 077
 
-# Set the GUFI library location, filename and architecture for singularity
-#GUFI_LIB="${GUFI_LIB:-library://brockp/gufi/gufi:master}"
-#GUFI_SIF="${GUFI_SIF:-gufi_master.sif}"
+# The GUFI image to run, and its architecture.  GUFI_LIB may also be the
+# path of a local .sif file; GUFI_SIF names the cached .sif if set.
 GUFI_LIB="${GUFI_LIB:-docker://ghcr.io/umich-arc/gufi-archive:latest}"
-GUFI_SIF="${GUFI_SIF:-gufi.sif}"
 GUFI_ARCH="${GUFI_ARCH:-amd64}"
 
 dflt_nthreads=8		# positive integers only
@@ -61,10 +59,18 @@ is $dflt_nthreads.  Note that higher numbers can be abusive on shared machines.
 The standard environment variable TMPDIR is recognized as an alternate
 location for the index instead of /tmp.
 
-apptainer or singularity must be installed and available for $0.
-If neither works and a "module" command exists, "module load apptainer"
-then "module load singularity" are tried.  GUFI_THREADS, GUFI_CACHE and
-GUFI_CACHE_DEPTH are passed on to the reports; see the gufi-archive README.
+GUFI runs from the gufi-archive container image (GUFI_LIB, by default
+$GUFI_LIB), using the first of these that works:
+apptainer, singularity, either after "module load" when a "module" command
+exists, then docker.  GUFI and the reports already on PATH, as inside the
+image, are used directly.  GUFISH_RUNTIME=apptainer, singularity, docker
+or native picks one.  apptainer and singularity keep the image in
+GUFISH_CACHE (default ~/.cache/gufish) and download it again only when the
+registry has a newer one; GUFISH_PULL=never skips that check, for example
+offline.  GUFI_LIB may also name a local .sif file.
+
+GUFI_THREADS, GUFI_CACHE and GUFI_CACHE_DEPTH are passed on to the
+reports; see the gufi-archive README.
 
 EOF
 		exit 1;;
@@ -113,35 +119,139 @@ mkdir -p "$GUFISH_TMP"						|| exit 4
 
 pushd "$GUFISH_TMP" > /dev/null					|| exit 5
 
-# Find a working apptainer, else singularity.  Some sites put a stub
-# singularity on PATH that only says to load a module, so a runtime counts
-# only if it reports a version number.
+# - Container runtime and image - - - - - - - - - - - - - - - - - - - - - - -
+
+# Does a runtime work here?  Some sites put a stub singularity on PATH that
+# only says to load a module, so apptainer/singularity count only if they
+# report a version number.
+gufish_works() {
+	case "$1" in
+	native)	type -P gufi_query dirsum.sh > /dev/null;;
+	apptainer|singularity)
+		"$1" --version 2> /dev/null | grep -qiE 'version [0-9]';;
+	docker)	docker info > /dev/null 2>&1;;
+	*)	return 1;;
+	esac
+}
+
+# Choose the runtime: the one asked for, else the first that works of
+# native (GUFI and the reports already on PATH), apptainer, singularity,
+# either from "module load", then docker
 gufish_runtime() {
 	local rt
-	for rt in apptainer singularity; do
-		"$rt" --version 2> /dev/null | grep -qiE 'version [0-9]' &&
-			{ echo "$rt"; return 0; }
+	if [ "${GUFISH_RUNTIME:-auto}" != auto ]; then
+		gufish_works "$GUFISH_RUNTIME" && echo "$GUFISH_RUNTIME"
+		return
+	fi
+	for rt in native apptainer singularity; do
+		gufish_works $rt && { echo $rt; return; }
 	done
-	return 1
+	if type module > /dev/null 2>&1; then
+		for rt in apptainer singularity; do
+			module load $rt > /dev/null 2>&1 && gufish_works $rt &&
+				{ echo $rt; return; }
+		done
+	fi
+	gufish_works docker && echo docker
 }
-export GUFISH_RT=$(gufish_runtime)
-if [ -z "$GUFISH_RT" ] && type module > /dev/null 2>&1; then
-	module load apptainer > /dev/null 2>&1 ||
-		module load singularity > /dev/null 2>&1
-	GUFISH_RT=$(gufish_runtime)
-fi
+
+# The digest a registry holds for docker://registry/repo:tag, or nothing if
+# it can't be reached.  Anonymous pulls still need a token, so follow the
+# registry's WWW-Authenticate challenge first.
+gufish_remote_digest() {
+	local ref=${1#docker://} tag registry repo auth realm service scope token
+	tag=${ref##*:}
+	[ "$tag" = "$ref" ] || [[ "$tag" == */* ]] && tag=latest
+	ref=${ref%:"$tag"}; registry=${ref%%/*}; repo=${ref#*/}
+	auth=$(curl -sSI --max-time 5 "https://$registry/v2/$repo/manifests/$tag" \
+		2> /dev/null | tr -d '\r' | sed -n 's/^www-authenticate: *Bearer *//Ip')
+	realm=$(sed -n 's/.*realm="\([^"]*\)".*/\1/p' <<< "$auth")
+	service=$(sed -n 's/.*service="\([^"]*\)".*/\1/p' <<< "$auth")
+	scope=$(sed -n 's/.*scope="\([^"]*\)".*/\1/p' <<< "$auth")
+	[ -n "$realm" ] && token=$(curl -sS --max-time 5 \
+		"$realm?service=$service&scope=$scope" 2> /dev/null |
+		sed -n 's/.*"token": *"\([^"]*\)".*/\1/p')
+	curl -sSI --max-time 5 ${token:+-H "Authorization: Bearer $token"} \
+		-H 'Accept: application/vnd.oci.image.index.v1+json' \
+		-H 'Accept: application/vnd.oci.image.manifest.v1+json' \
+		-H 'Accept: application/vnd.docker.distribution.manifest.list.v2+json' \
+		-H 'Accept: application/vnd.docker.distribution.manifest.v2+json' \
+		"https://$registry/v2/$repo/manifests/$tag" 2> /dev/null |
+		tr -d '\r' | sed -n 's/^docker-content-digest: *//Ip'
+}
+
+# Make sure the image is here and current.  apptainer/singularity keep one
+# .sif per tag in GUFISH_CACHE with the registry digest beside it, and pull
+# again only when the registry's digest differs.  Offline, the cached copy
+# is used.  GUFISH_PULL=never skips the check, "force" always pulls.
+gufish_image() {
+	local pull="${1:-${GUFISH_PULL:-always}}" remote cached sif tmp
+	case "$GUFISH_RT" in
+	native)	GUFISH_IMAGE=; return 0;;
+	docker)	GUFISH_IMAGE=${GUFI_LIB#docker://}
+		if [ "$pull" != never ] ||
+		   ! docker image inspect "$GUFISH_IMAGE" > /dev/null 2>&1; then
+			docker pull -q --platform "linux/$GUFI_ARCH" "$GUFISH_IMAGE" \
+				> /dev/null || docker image inspect "$GUFISH_IMAGE" \
+				> /dev/null 2>&1 || return 1
+		fi
+		return 0;;
+	esac
+	if [ -f "$GUFI_LIB" ]; then	# a local .sif file, used as is
+		GUFISH_IMAGE=$GUFI_LIB; return 0
+	fi
+	mkdir -p "$GUFISH_CACHE" || return 1
+	sif=${GUFI_SIF:-$(basename "${GUFI_LIB#*://}" | tr ':' '_').sif}
+	GUFISH_IMAGE="$GUFISH_CACHE/$sif"
+	cached=$(cat "$GUFISH_IMAGE.digest" 2> /dev/null)
+	[ -f "$GUFISH_IMAGE" ] || cached=
+	if [ "$pull" = never ] && [ -f "$GUFISH_IMAGE" ]; then return 0; fi
+	[[ "$GUFI_LIB" == docker://* ]] && remote=$(gufish_remote_digest "$GUFI_LIB")
+	if [ -n "$cached" ] && [ "$pull" != force ] &&
+	   { [ "$remote" = "$cached" ] || [ -z "$remote" ]; }; then
+		[ -z "$remote" ] && [ -n "$(find "$GUFISH_IMAGE" -mtime +60)" ] &&
+			echo "gufish: could not check for a newer image; $GUFISH_IMAGE is over 60 days old" 1>&2
+		return 0
+	fi
+	echo "Downloading the GUFI image $GUFI_LIB ..."
+	tmp="$GUFISH_IMAGE.$$"
+	"$GUFISH_RT" pull --arch "$GUFI_ARCH" "$tmp" "$GUFI_LIB" ||
+		{ rm -f "$tmp"; [ -f "$GUFISH_IMAGE" ]; return; }
+	mv -f "$tmp" "$GUFISH_IMAGE" && echo "${remote:-unknown}" > "$GUFISH_IMAGE.digest"
+	echo
+}
+
+# Run a command from the image, seeing the scanned tree read-only and the
+# index directory read-write at their own paths.  --gufi-tree also mounts
+# the index at /tmp/GUFI, where gufi_ls and gufi_find look for it.
+gufish_exec() {
+	local tree=
+	[ "$1" = --gufi-tree ] && { tree="$GUFISH_TMP/$GUFISH_BASE"; shift; }
+	case "$GUFISH_RT" in
+	native)	"$@";;
+	apptainer|singularity)
+		"$GUFISH_RT" exec --bind "$GUFISH_DIR:$GUFISH_DIR:ro" \
+			--bind "$GUFISH_TMP" --bind /etc/passwd,/etc/group \
+			${tree:+--bind "$tree:/tmp/GUFI"} "$GUFISH_IMAGE" "$@";;
+	docker)	# no -i: gufish's own stdin may hold the user's commands
+		docker run --rm --platform "linux/$GUFI_ARCH" \
+			--user "$(id -u):$(id -g)" \
+			-v "$GUFISH_DIR:$GUFISH_DIR:ro" -v "$GUFISH_TMP:$GUFISH_TMP" \
+			-v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro \
+			${tree:+-v "$tree:/tmp/GUFI"} \
+			-e GUFI_THREADS -e GUFI_CACHE -e GUFI_CACHE_DEPTH \
+			"$GUFISH_IMAGE" "$@";;
+	esac
+}
+export -f gufish_works gufish_runtime gufish_remote_digest gufish_image gufish_exec
+
+export GUFISH_CACHE="${GUFISH_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/gufish}"
+export GUFISH_RT=$(gufish_runtime) GUFISH_IMAGE=
 if [ -z "$GUFISH_RT" ]; then
-	echo 'gufish: ABORTING, neither apptainer nor singularity is available' 1>&2
+	echo "gufish: ABORTING, no container runtime works here (${GUFISH_RUNTIME:-auto})" 1>&2
 								   exit 6
 fi
-
-# Download the GUFI library for use with singularity/apptainer
-if [ ! -f "$GUFI_SIF" ]; then
-	echo 'Downloading the GUFI library ...'
-	"$GUFISH_RT" pull --arch "$GUFI_ARCH" \
-			 "$GUFI_SIF" "$GUFI_LIB"		|| exit 7
-	echo 
-fi
+gufish_image							|| exit 7
 
 # Scan and index the directory if needed
 if [ -e "$GUFISH_BASE" ]; then
@@ -155,11 +265,9 @@ else
 	echo "$GUFISH_BASE"	  > .gufish_base		|| exit 8
 	echo "$USER"		  > .gufish_user		|| exit 8
 	date +'%Y-%m-%d %H:%M:%S' > .gufish_date		|| exit 8
-	# the container sees only what is bound, so bind the directory to index
-	stdbuf -oL "$GUFISH_RT" exec --bind "$GUFISH_DIR:$GUFISH_DIR:ro" \
-	    "$GUFI_SIF" gufi_dir2index -k .skip \
-	    -n "${GUFISH_NTHREADS:-1}" "$GUFISH_DIR" . 2>&1 |
-		grep -v -i '"\." Already exists'
+	gufish_exec gufi_dir2index -k "$GUFISH_TMP/.skip" \
+	    -n "${GUFISH_NTHREADS:-1}" "$GUFISH_DIR" "$GUFISH_TMP" 2>&1 |
+		grep -v -i 'Already exists'
 fi
 echo
 
@@ -233,6 +341,7 @@ Other special commands:
     ${Y}gufi usage$e     output this message again
     ${Y}gufi cdroot$e    change directory to the top of the indexed tree
     ${Y}gufi info$e      output information about this gufi shell
+    ${Y}gufi update$e    download the GUFI image again
     ${Y}gufi howsave$e   instructions on preserving the index for future use
     ${Y}gufi clean$e     delete index in $GUFISH_TMP on exit (default)
     ${Y}gufi noclean$e   do not delete index in $GUFISH_TMP on exit
@@ -252,7 +361,14 @@ EOF
 		# deletion unknown if in a non-main gufi shell
 		[[ "`trap -p EXIT`" == *'exit'* ]] || not=
 		[ -n "$not" ] && { echo "$not"; echo; }
+		echo "Running GUFI with $GUFISH_RT${GUFISH_IMAGE:+ from $GUFISH_IMAGE}"
+		[ -f "$GUFISH_IMAGE.digest" ] &&
+			echo "image digest $(cat "$GUFISH_IMAGE.digest")"
+		echo
 		env | grep '^GUFI' | sort; return;;
+
+	# Download the image again, whether or not it changed
+	upd*)	gufish_image force; return;;
 
 	# Output instructions for index reuse
 	how*)	cat <<EOF
@@ -277,14 +393,10 @@ EOF
 	cdroot)	cd "$GUFISH_DIR"; return;;
 	esac
 
-	# bind the index too, in case it is outside the default binds
-	local cmd="$GUFISH_RT exec --bind /etc/passwd,/etc/group --bind $GUFISH_TMP"
-
 	# Run supported gufi_* GUFI commands
 	case "$1" in ls|find|getfattr|stat|stats|query)
-		arg1="$1"; shift
-		cmd="$cmd --bind $GUFISH_TMP/$GUFISH_BASE:/tmp/GUFI"
-		$cmd "$GUFISH_TMP/$GUFI_SIF" gufi_$arg1 ${1+"$@"}
+		local tool="gufi_$1"; shift
+		gufish_exec --gufi-tree "$tool" ${1+"$@"}
 		return;;
 	esac
 
@@ -323,8 +435,7 @@ EOF
 	tot*)	report=totals.sh;;	arc*)	report=archivescan.sh;;
 	*)	echo "${FUNCNAME[0]}: unknown action ($action)" 1>&2; return 1;;
 	esac
-	$cmd "$GUFISH_TMP/$GUFI_SIF" \
-	    $report "$GUFISH_TMP/$GUFISH_BASE$subdir" "$arg2"
+	gufish_exec $report "$GUFISH_TMP/$GUFISH_BASE$subdir" "$arg2"
 }
 export -f gufi
 
@@ -339,7 +450,7 @@ _gufi_completion() {
 	local cur="${COMP_WORDS[COMP_CWORD]}"
 	local cword=$COMP_CWORD
 	local cmds='dirsum summary totals archivescan usage cdroot info'
-	      cmds="$cmds howsave clean noclean ls find"
+	      cmds="$cmds howsave clean noclean update ls find"
 	local cmd=
 
 	# Complete 1st argument subcommands
@@ -381,6 +492,9 @@ SHELL
 # Sanitize and export the GUFI variables
 export GUFI_LIB="${GUFI_LIB//\'/}"
 export GUFI_SIF="${GUFI_SIF//\'/}"
+export GUFISH_RUNTIME="${GUFISH_RUNTIME//\'/}"
+export GUFISH_PULL="${GUFISH_PULL//\'/}"
+export GUFISH_CACHE="${GUFISH_CACHE//\'/}"
 export GUFI_ARCH="${GUFI_ARCH//\'/}"
 
 # Determine quiet mode and number of threads to use for scanning
@@ -405,7 +519,8 @@ echo 'You may disregard any "Inappropriate ioctl" warning:'
 env="GUFISH_ARG1='$arg1' GUFISH_NTHREADS='$GUFISH_NTHREADS'"
 env="$env GUFI_LIB='$GUFI_LIB' GUFI_SIF='$GUFI_SIF' GUFI_ARCH='$GUFI_ARCH'"
 env="$env GUFISH_QUIET='$GUFISH_QUIET'"
-for var in GUFI_THREADS GUFI_CACHE GUFI_CACHE_DEPTH; do
+for var in GUFI_THREADS GUFI_CACHE GUFI_CACHE_DEPTH \
+	   GUFISH_RUNTIME GUFISH_PULL GUFISH_CACHE; do
 	[ -n "${!var}" ] && env="$env $var='${!var//\'/}'"
 done
 case "$suhow" in

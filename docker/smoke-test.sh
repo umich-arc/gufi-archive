@@ -111,4 +111,20 @@ if ! grep -q '^Using sums cached' <<< "$cached" ||
 fi
 echo "ok two-day-old cache used, ages still from the day it was made"
 
+echo "-- gufish runs the image with the docker runtime"
+# gufish calls plain docker, so only when that is what this test uses
+if [ "$docker" = docker ]; then
+    repo=$(cd "$(dirname "$0")/.." && pwd)
+    out=$(cd "$workdir" && GUFISH_RUNTIME=docker GUFISH_PULL=never \
+        GUFI_LIB="docker://$image" TMPDIR="$workdir" GUFISH_CACHE="$workdir/cache" \
+        "$repo/gufish" -q "$workdir/src" <<< 'gufi totals 180; exit' 2>&1)
+    total=$(awk '/^count/ {getline; last = $1} END {print last}' <<< "$out")
+    if [ "$total" != "$nfiles" ]; then
+        echo "$out"
+        echo "FAIL gufish totals count is '$total', expected $nfiles"
+        exit 1
+    fi
+    echo "ok gufish with docker ($total files)"
+fi
+
 echo "== all smoke tests passed"
