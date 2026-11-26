@@ -63,22 +63,14 @@ scripting or for a site's own tooling.
 
 ### Getting the image
 
-**The Singularity definition file and the Sylabs library images
-(`library://brockp/gufi/gufi`) are retired and no longer updated.**
-
-gufi-archive is now published as a Docker / OCI image, which Singularity and
-[Apptainer](https://apptainer.org) pull and run directly without root.  The
-commands you already know still work; only the `pull` source changes:
+gufi-archive is published as a Docker / OCI image, which Singularity and
+[Apptainer](https://apptainer.org) pull and run directly without root:
 
 ```
-# old (no longer updated)
-singularity pull --arch amd64 library://brockp/gufi/gufi:master
-
-# new
-singularity pull gufi.sif docker://ghcr.io/umich-arc/gufi-archive:latest
-
-# or with Apptainer
 apptainer pull gufi.sif docker://ghcr.io/umich-arc/gufi-archive:latest
+
+# or with Singularity
+singularity pull gufi.sif docker://ghcr.io/umich-arc/gufi-archive:latest
 ```
 
 See [docker/README.md](docker/README.md) for full instructions, plain Docker

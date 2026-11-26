@@ -8,10 +8,6 @@ scripts](../SCRIPTS.md), so no local GUFI build is needed.
 The same image runs under [Apptainer](https://apptainer.org) and Singularity
 without root, which is the recommended way to use it on HPC clusters.
 
-> The previous Singularity images on the Sylabs library
-> (`library://brockp/gufi/gufi`) are no longer updated.  Pull the Docker image
-> instead as shown below.
-
 ## Apptainer / Singularity
 
 Pull the image and convert it to a `.sif` file:
