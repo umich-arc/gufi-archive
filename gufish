@@ -233,9 +233,10 @@ gufish_exec() {
 		"$GUFISH_RT" exec --bind "$GUFISH_DIR:$GUFISH_DIR:ro" \
 			--bind "$GUFISH_TMP" --bind /etc/passwd,/etc/group \
 			${tree:+--bind "$tree:/tmp/GUFI"} "$GUFISH_IMAGE" "$@";;
-	docker)	# no -i: gufish's own stdin may hold the user's commands
+	docker)	# no -i: gufish's own stdin may hold the user's commands.  Work in
+		# the index directory, as gufi_dir2index writes scratch files there.
 		docker run --rm --platform "linux/$GUFI_ARCH" \
-			--user "$(id -u):$(id -g)" \
+			--user "$(id -u):$(id -g)" -w "$GUFISH_TMP" \
 			-v "$GUFISH_DIR:$GUFISH_DIR:ro" -v "$GUFISH_TMP:$GUFISH_TMP" \
 			-v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro \
 			${tree:+-v "$tree:/tmp/GUFI"} \
