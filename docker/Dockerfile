@@ -80,6 +80,8 @@ RUN apt-get update && \
 COPY --from=builder /usr/local /usr/local
 COPY --from=builder /etc/GUFI /etc/GUFI
 COPY reports /gufi-archive/reports
+# gufish runs GUFI directly when it finds it on PATH, as here
+COPY gufish /usr/local/bin/gufish
 
 # Docker ENV is imported by Apptainer/Singularity, matching the old .sif %environment
 ENV PATH="/gufi-archive/reports:${PATH}"

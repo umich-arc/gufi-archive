@@ -1,3 +1,6 @@
+Every report below takes the path of a GUFI index.  In
+[gufish](README.md#quick-start-gufish) run them as `gufi totals`,
+`gufi dirsum` and so on, with a subdirectory of the scanned tree instead.
 
 # totals.sh
 

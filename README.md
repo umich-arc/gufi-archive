@@ -4,7 +4,64 @@ We use parts of [GUFI](https://github.com/mar-file-system/GUFI/) to perform high
 perfromance scanning of storage areas to make reports to better make decisions
 about the archiveability of data in massive volumes.
 
-## Container
+## Quick start: gufish
+
+`gufish` indexes a directory and opens your usual shell with `gufi` commands
+for the reports. It runs GUFI from the container for you, so all you need is
+one of Apptainer, Singularity or Docker, and no root.
+
+```
+curl -fsSLO https://raw.githubusercontent.com/umich-arc/gufi-archive/master/gufish
+chmod +x gufish
+./gufish /path/to/scan
+```
+
+Indexing takes a while on a big tree. Then, at the `GUFI$` prompt:
+
+```
+gufi dirtotals 180          # per-directory table and totals, 180 days unread
+gufi cdroot                 # cd to the scanned directory
+gufi dirsum 90 somedir      # drill down: days and directory in either order
+cd somedir; gufi totals 30  # inside the tree, reports cover where you are
+gufi summary                # per-owner totals
+gufi usage                  # every command
+exit                        # deletes the index unless you ran "gufi noclean"
+```
+
+The first report reads the whole index. After that, reports on the same tree
+and its subdirectories come back at once for 30, 60, 90, 120, 150, 180, 270,
+365, 730, 1095 or 1826 days (see [Drill-down cache](#drill-down-cache)).
+Commands can also come on standard input, for scripts:
+`./gufish -q /path/to/scan <<< 'gufi dirtotals 180; exit'`.
+
+gufish picks the first of these that works: Apptainer, Singularity
+(including after `module load`), then Docker. Apptainer and Singularity
+keep the image in `~/.cache/gufish` and download it again only when a new
+version is published. `./gufish --help` explains everything; the settings
+you are most likely to want are:
+
+| Variable | Effect |
+|---|---|
+| `TMPDIR` | where the index goes (default `/tmp`); it needs room |
+| `GUFISH_NTHREADS` | threads for indexing (default 8) |
+| `GUFISH_RUNTIME` | `apptainer`, `singularity`, `docker` or `native` instead of the first that works |
+| `GUFISH_PULL=never` | never check for a newer image, e.g. offline |
+| `GUFISH_CACHE` | where the image is kept (default `~/.cache/gufish`) |
+| `GUFI_LIB` | the image: another tag such as `docker://ghcr.io/umich-arc/gufi-archive:pr-8`, or a local `.sif` |
+
+gufish is also in the image, where it runs GUFI directly, so you can get
+it without git, `apptainer exec docker://ghcr.io/umich-arc/gufi-archive cat
+/usr/local/bin/gufish > gufish`, or run it all in the container, binding the
+directory to scan: `apptainer exec -B /scratch gufi.sif gufish /scratch/mydir`.
+
+gufish was written by Steve Kinzler.
+
+## Running the container directly
+
+gufish does all of this for you. These are the underlying commands, for
+scripting or for a site's own tooling.
+
+### Getting the image
 
 **The Singularity definition file and the Sylabs library images
 (`library://brockp/gufi/gufi`) are retired and no longer updated.**
@@ -27,7 +84,7 @@ apptainer pull gufi.sif docker://ghcr.io/umich-arc/gufi-archive:latest
 See [docker/README.md](docker/README.md) for full instructions, plain Docker
 usage, published tags and building the image.
 
-## Reporting Scripts
+### Indexing and reports
 
 ```
 # build an index this is time consuming but is reused for many queries
@@ -40,7 +97,7 @@ singularity exec --bind /etc/passwd gufi.sif summary.sh /tmp/GUFI [days]
 singularity exec --bind /etc/passwd gufi.sif gufi_ls --help
 ```
 
-### Scripts
+#### Scripts
 
 [SCRIPTS.md](SCRIPTS.md)
 
@@ -53,14 +110,14 @@ singularity exec --bind /etc/passwd gufi.sif gufi_ls --help
    from one read of the index instead of two.
  * `archivescan.sh /tmp/GUFI/dir [sizeMB]` Bucket data into over size and under.
 
-### Threads
+#### Threads
 
 `dirsum.sh`, `totals.sh` and `dirtotals.sh` run 8 threads. Set `GUFI_THREADS`
 to change that, for example `GUFI_THREADS=32 dirtotals.sh /tmp/GUFI`. An index
 on spinning disk is limited by seeks rather than CPU, and more threads keep
 more reads queued for the drive to reorder.
 
-### Drill-down cache
+#### Drill-down cache
 
 The first `dirsum.sh`, `totals.sh`, `dirtotals.sh` or `summary.sh` on an index walks all of
 it and saves the per-directory sums in a small hidden file at the top of what
@@ -85,20 +142,11 @@ walk again with `GUFI_CACHE=0`; that run does not replace the cache.
  * An index you cannot write to just isn't cached. Deleting the index deletes
    its cache.
 
-### Resolving groups and users
+#### Resolving groups and users
 
 The continer doesn't know about UID's and groups other than the user invoking
 it. To correctly resolve the UID and GID's stored in the GUFI index you need to
 bind the local system to the container runtime with `--bind /etc/passwd`
-
-### Using GUFI-Shell gufish, a shell front-end to all this
-
-A simple way to use the GUFI Archive Scanning container and reports
-is via the gufish script here.  Make sure you have singularity or
-apptainer installed.  Run this Bash script without arguments for usage.
-Run it with a directory as an argument to index that directory and
-enter your regular bash shell with additional commands to run reports
-on the index.
 
 ## Building GUFI
 

@@ -1,6 +1,9 @@
 #!/bin/bash
 umask 077
 
+# containers often run as a uid with no USER set or no passwd entry
+export USER="${USER:-$(id -un 2> /dev/null || id -u)}"
+
 # The GUFI image to run, and its architecture.  GUFI_LIB may also be the
 # path of a local .sif file; GUFI_SIF names the cached .sif if set.
 GUFI_LIB="${GUFI_LIB:-docker://ghcr.io/umich-arc/gufi-archive:latest}"

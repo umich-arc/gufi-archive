@@ -111,6 +111,17 @@ if ! grep -q '^Using sums cached' <<< "$cached" ||
 fi
 echo "ok two-day-old cache used, ages still from the day it was made"
 
+echo "-- gufish inside the image runs GUFI directly"
+out=$($docker run --rm -i --user "$(id -u):$(id -g)" -v "$workdir:/data" -w /data \
+    "$image" gufish -q /data/src <<< 'gufi info | grep "^Running"; gufi totals 180; exit' 2>&1)
+total=$(awk '/^count/ {getline; last = $1} END {print last}' <<< "$out")
+if [ "$total" != "$nfiles" ] || ! grep -q '^Running GUFI with native' <<< "$out"; then
+    echo "$out"
+    echo "FAIL gufish in the image: count '$total', expected $nfiles, native runtime"
+    exit 1
+fi
+echo "ok gufish native in the image ($total files)"
+
 echo "-- gufish runs the image with the docker runtime"
 # gufish calls plain docker, so only when that is what this test uses
 if [ "$docker" = docker ]; then
