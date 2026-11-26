@@ -139,23 +139,28 @@ gufish_works() {
 
 # Choose the runtime: the one asked for, else the first that works of
 # native (GUFI and the reports already on PATH), apptainer, singularity,
-# either from "module load", then docker
+# either from "module load", then docker.  This sets GUFISH_RT and, for
+# apptainer/singularity, GUFISH_RT_BIN, the binary's full path.  It must run
+# in this shell, not $(...), so a "module load" stays in effect, and the
+# full path survives a ~/.bashrc that resets PATH.
 gufish_runtime() {
 	local rt
+	GUFISH_RT=
 	if [ "${GUFISH_RUNTIME:-auto}" != auto ]; then
-		gufish_works "$GUFISH_RUNTIME" && echo "$GUFISH_RUNTIME"
-		return
-	fi
-	for rt in native apptainer singularity; do
-		gufish_works $rt && { echo $rt; return; }
-	done
-	if type module > /dev/null 2>&1; then
-		for rt in apptainer singularity; do
-			module load $rt > /dev/null 2>&1 && gufish_works $rt &&
-				{ echo $rt; return; }
+		gufish_works "$GUFISH_RUNTIME" && GUFISH_RT=$GUFISH_RUNTIME
+	else
+		for rt in native apptainer singularity; do
+			gufish_works $rt && { GUFISH_RT=$rt; break; }
 		done
+		if [ -z "$GUFISH_RT" ] && type module > /dev/null 2>&1; then
+			for rt in apptainer singularity; do
+				module load $rt > /dev/null 2>&1 && gufish_works $rt &&
+					{ GUFISH_RT=$rt; break; }
+			done
+		fi
+		[ -z "$GUFISH_RT" ] && gufish_works docker && GUFISH_RT=docker
 	fi
-	gufish_works docker && echo docker
+	GUFISH_RT_BIN=$(type -P "$GUFISH_RT" 2> /dev/null)
 }
 
 # The digest a registry holds for docker://registry/repo:tag, or nothing if
@@ -218,7 +223,8 @@ gufish_image() {
 	fi
 	echo "Downloading the GUFI image $GUFI_LIB ..."
 	tmp="$GUFISH_IMAGE.$$"
-	"$GUFISH_RT" pull --arch "$GUFI_ARCH" "$tmp" "$GUFI_LIB" ||
+	# Check for the file too: a stub that only prints advice exits 0
+	"$GUFISH_RT_BIN" pull --arch "$GUFI_ARCH" "$tmp" "$GUFI_LIB" && [ -f "$tmp" ] ||
 		{ rm -f "$tmp"; [ -f "$GUFISH_IMAGE" ]; return; }
 	mv -f "$tmp" "$GUFISH_IMAGE" && echo "${remote:-unknown}" > "$GUFISH_IMAGE.digest"
 	echo
@@ -233,7 +239,7 @@ gufish_exec() {
 	case "$GUFISH_RT" in
 	native)	"$@";;
 	apptainer|singularity)
-		"$GUFISH_RT" exec --bind "$GUFISH_DIR:$GUFISH_DIR:ro" \
+		"$GUFISH_RT_BIN" exec --bind "$GUFISH_DIR:$GUFISH_DIR:ro" \
 			--bind "$GUFISH_TMP" --bind /etc/passwd,/etc/group \
 			${tree:+--bind "$tree:/tmp/GUFI"} "$GUFISH_IMAGE" "$@";;
 	docker)	# no -i: gufish's own stdin may hold the user's commands.  Work in
@@ -250,7 +256,8 @@ gufish_exec() {
 export -f gufish_works gufish_runtime gufish_remote_digest gufish_image gufish_exec
 
 export GUFISH_CACHE="${GUFISH_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/gufish}"
-export GUFISH_RT=$(gufish_runtime) GUFISH_IMAGE=
+gufish_runtime
+export GUFISH_RT GUFISH_RT_BIN GUFISH_IMAGE=
 if [ -z "$GUFISH_RT" ]; then
 	echo "gufish: ABORTING, no container runtime works here (${GUFISH_RUNTIME:-auto})" 1>&2
 								   exit 6
