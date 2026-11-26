@@ -7,6 +7,7 @@
 MIGRATESIZE=${2:-100}
 
 if [ $# -lt 1 ]; then echo "Usage: $(basename $0) index [MB]"; exit 1; fi
+if [[ ! "$MIGRATESIZE" =~ ^[0-9]+$ ]]; then echo "MB must be a whole number, not '$MIGRATESIZE'" 1>&2; exit 1; fi
 
 echo ""
 echo "Using GUFI Index located in: $1"

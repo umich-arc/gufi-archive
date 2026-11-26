@@ -15,6 +15,7 @@ on:
     paths:
       - "docker/**"
       - "reports/**"
+      - "gufish"
       - ".dockerignore"
       - ".github/workflows/container.yml"
   release:

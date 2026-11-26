@@ -48,6 +48,10 @@ dirstats_load () {
 	local days=$2
 	local levels_below=$3
 
+	if [[ ! "$days" =~ ^[0-9]+$ ]]; then
+		echo "days must be a whole number, not '$days'" 1>&2
+		exit 1
+	fi
 	if [ -n "$CACHE" ] && dirstats_find_cache "$index_path" "$days" "$levels_below"; then
 		return
 	fi

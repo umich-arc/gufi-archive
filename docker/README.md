@@ -43,8 +43,8 @@ singularity exec --bind /etc/passwd gufi.sif summary.sh /tmp/GUFI [days]
 ```
 
 See [SCRIPTS.md](../SCRIPTS.md) and the [main README](../README.md#scripts) for
-every report.  The reports write their temporary `outdb*` files to the current
-directory, so run them from a directory you can write to.
+every report.  Most people should use [gufish](../README.md#quick-start-gufish)
+instead, which runs these for you.
 
 Your home directory and current directory are normally bound into the container
 automatically.  Bind other filesystems with `-B`, eg
@@ -58,6 +58,9 @@ stored in the GUFI index to names, bind the host's account database with
 reports show numeric IDs.
 
 ## Docker
+
+gufish uses Docker when neither Apptainer nor Singularity works, or when
+asked with `GUFISH_RUNTIME=docker`.  To run the image by hand:
 
 ```
 docker pull ghcr.io/umich-arc/gufi-archive:latest
