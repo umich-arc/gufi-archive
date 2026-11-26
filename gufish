@@ -261,6 +261,8 @@ if [ -e "$GUFISH_BASE" ]; then
 	echo "as scanned by $(cat .gufish_user) on $(cat .gufish_date)"
 else
 	echo "Indexing $GUFISH_DIR as $USER ..."
+	df -Ph . | awk 'NR == 2 {print "(the index goes in " $6 ", which has " $4 " free)"}'
+	started=$SECONDS
 	printf '%s\n' .snapshot .snapshots .zfs > .skip		|| exit 8
 	echo "$GUFISH_DIR"	  > .gufish_dir			|| exit 8
 	echo "$GUFISH_BASE"	  > .gufish_base		|| exit 8
@@ -269,6 +271,12 @@ else
 	gufish_exec gufi_dir2index -k "$GUFISH_TMP/.skip" \
 	    -n "${GUFISH_NTHREADS:-1}" "$GUFISH_DIR" "$GUFISH_TMP" 2>&1 |
 		grep -v -i 'Already exists'
+	took=$((SECONDS - started))
+	printf 'Indexing took %dh%02dm%02ds\n' $((took / 3600)) $((took / 60 % 60)) $((took % 60))
+	# a slow scan is worth keeping for another session
+	[ "$took" -ge 600 ] &&
+		echo 'Run "gufi howsave" to see how to keep this index for later.'
+	unset started took
 fi
 echo
 
@@ -311,6 +319,12 @@ Available GUFI Archive Scanning reporting commands:
   no subdirectory, reports cover your current directory when inside the
   tree, otherwise all of it.  Write a directory named only with digits
   as ./2024 so it is not taken as #days.
+
+  The first report reads the whole index; after that, reports on the
+  same tree or its subdirectories, for #days of 30, 60, 90, 120, 150,
+  180, 270, 365, 730, 1095 or 1826, answer at once from saved totals.
+    ${Y}gufi dirtotals$e [ $r#days$e ] [ ${r}subdirectory$e ]
+        Start here: the dirsum table then the totals row.
     ${Y}gufi dirsum$e [ $r#days$e ] [ ${r}subdirectory$e ]
         Similar output to \`du --max-depth=1\` with totals and just data
         last accessed more than ${r}#days$e ago.
@@ -432,7 +446,8 @@ EOF
 	# Run the requested report
 	local report=
 	case "$action" in
-	sum*)	report=summary.sh;;	dir*)	report=dirsum.sh;;
+	sum*)	report=summary.sh;;	dirt*)	report=dirtotals.sh;;
+	dir*)	report=dirsum.sh;;
 	tot*)	report=totals.sh;;	arc*)	report=archivescan.sh;;
 	*)	echo "${FUNCNAME[0]}: unknown action ($action)" 1>&2; return 1;;
 	esac
@@ -450,7 +465,7 @@ export -f interact
 _gufi_completion() {
 	local cur="${COMP_WORDS[COMP_CWORD]}"
 	local cword=$COMP_CWORD
-	local cmds='dirsum summary totals archivescan usage cdroot info'
+	local cmds='dirtotals dirsum summary totals archivescan usage cdroot info'
 	      cmds="$cmds howsave clean noclean update ls find"
 	local cmd=
 
@@ -465,16 +480,22 @@ _gufi_completion() {
 		done
 	done
 
-	# Complete with some suggested #days or sizeMBs
-	case "$cmd,$((cword - 2))" in
-	dirsum,0|summary,0|totals,0)
-	    COMPREPLY=($(compgen -W "default 30 90 180 365 1826" -- "$cur"))
-	    return;;
-	archivescan,0)
-	    COMPREPLY=($(compgen -W "default 50 100 500 1000"    -- "$cur"))
-	    return;;
+	# Arguments come in any order: numbers complete to suggested #days
+	# (those the saved totals hold) or sizeMBs, anything else to
+	# directories when inside the scanned tree
+	local numbers=
+	case "$cmd" in
+	dirtotals|dirsum|summary|totals)
+	    numbers="30 60 90 120 150 180 270 365 730 1095 1826";;
+	archivescan)
+	    numbers="50 100 500 1000";;
+	*)  COMPREPLY=(); return;;
 	esac
-	COMPREPLY=()
+	case "$cur" in
+	''|[0-9]*) COMPREPLY=($(compgen -W "$numbers" -- "$cur"));;
+	*)	   compopt -o filenames 2> /dev/null
+		   COMPREPLY=($(compgen -d -- "$cur"));;
+	esac
 }
 complete -F _gufi_completion gufi
 
